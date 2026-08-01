@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>庫存管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=1" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>庫存管理</h1>
+    <nav id="userNav" style="display:none;">
+      <span id="currentUserEmail" class="hint-text"></span>
+      <button class="secondary" id="logoutBtn">登出</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- 登入畫面 -->
+    <div id="loginBox" class="login-box">
+      <h2>登入</h2>
+      <input type="email" id="emailInput" placeholder="Email" autocomplete="username" />
+      <input type="password" id="passwordInput" placeholder="密碼" autocomplete="current-password" />
+      <div class="error-text" id="loginError"></div>
+      <button id="loginBtn" style="width:100%;">登入</button>
+    </div>
+
+    <!-- 主畫面 -->
+    <div id="appContent" style="display:none;">
+
+      <div class="tab-row">
+        <button type="button" class="tab-btn active" data-tab="search">品項查詢</button>
+        <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
+      </div>
+
+      <!-- 品項查詢 -->
+      <section id="tabSearch" class="tab-panel">
+        <div class="panel">
+          <input type="text" id="searchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="stockSummary"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>品號</th>
+                  <th>品名</th>
+                  <th>泰山庫存</th>
+                  <th>泰山最短效期</th>
+                  <th>台中庫存</th>
+                  <th>台中最短效期</th>
+                </tr>
+              </thead>
+              <tbody id="stockTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 匯入資料 -->
+      <section id="tabImport" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>匯入 ERP 庫存檔</h2>
+          <p class="hint-text">
+            直接上傳整份 ERP 匯出的 Excel 檔（.xlsx），系統會自動找出「泰山」跟「台中」這兩個分頁，
+            重新整理庫存資料。匯入會完全取代這兩個倉庫目前的庫存資料，用最新的檔案內容為準。
+          </p>
+          <div id="importDropZone" class="upload-drop-zone">
+            拖曳 Excel 檔到這裡，或點擊選擇檔案
+            <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none;" />
+          </div>
+          <p class="hint-text" id="importMsg"></p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script type="module" src="app.js?v=1"></script>
+</body>
+</html>
