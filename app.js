@@ -1,4 +1,5 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
+// 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
 import { auth } from './firebase-config.js?v=1';
 import {
   signInWithEmailAndPassword,
@@ -6,6 +7,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { subscribeToStock, replaceStockForWarehouses } from './inventory-service.js?v=1';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=1';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -19,6 +21,7 @@ const currentUserEmail = document.getElementById('currentUserEmail');
 const logoutBtn = document.getElementById('logoutBtn');
 
 const searchInput = document.getElementById('searchInput');
+const stockTableHead = document.getElementById('stockTableHead');
 const stockTableBody = document.getElementById('stockTableBody');
 const stockSummary = document.getElementById('stockSummary');
 
@@ -26,10 +29,28 @@ const importDropZone = document.getElementById('importDropZone');
 const importFileInput = document.getElementById('importFileInput');
 const importMsg = document.getElementById('importMsg');
 
+const usersTableBody = document.getElementById('usersTableBody');
+
 const WAREHOUSES = ['泰山', '台中'];
+const ROLES = ['泰山倉管', '台中倉管', '廠務', '會計', '管理員'];
+
+// 每個角色能看到哪些倉庫的庫存欄位（品項查詢/匯入都依這個判斷）
+const WAREHOUSE_VISIBILITY = {
+  '泰山倉管': ['泰山', '台中'],
+  '台中倉管': ['台中'],
+  '管理員': ['泰山', '台中']
+};
+
+let currentUid = null;
+let currentRoles = [];
+let visibleWarehouses = [];
+let isAdmin = false;
 
 let currentStock = [];
+let currentUsers = [];
 let unsubscribeStock = null;
+let unsubscribeOwnProfile = null;
+let unsubscribeUsers = null;
 
 // ---------- 登入 ----------
 
@@ -61,40 +82,92 @@ function describeAuthError(err) {
   return map[err.code] || err.message;
 }
 
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async user => {
+  // 換帳號（不一定會先登出，例如上一個帳號的登入還留在瀏覽器裡）時，
+  // 一定要先把舊帳號的訂閱全部關掉，不然畫面會殘留舊帳號的角色權限。
+  if (unsubscribeOwnProfile) { unsubscribeOwnProfile(); unsubscribeOwnProfile = null; }
+  if (unsubscribeStock) { unsubscribeStock(); unsubscribeStock = null; }
+  if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
+  currentRoles = [];
+  currentStock = [];
+  currentUsers = [];
+  applyRoleVisibility(); // 立刻把畫面收回「沒有任何角色」狀態，避免短暫殘留上一個帳號看到的東西
+
   if (user) {
+    currentUid = user.uid;
     loginBox.style.display = 'none';
     appContent.style.display = 'block';
     userNav.style.display = 'flex';
     currentUserEmail.textContent = user.email;
-    if (!unsubscribeStock) {
-      unsubscribeStock = subscribeToStock(
-        stock => {
-          currentStock = stock;
-          renderStockTable();
-        },
-        err => {
-          stockSummary.style.color = 'var(--color-danger)';
-          stockSummary.textContent = '讀取庫存資料失敗：' + err.message;
-        }
-      );
-    }
+
+    await touchOwnProfile(user.uid, user.email);
+
+    unsubscribeOwnProfile = subscribeToOwnProfile(user.uid, profile => {
+      currentRoles = profile.roles || [];
+      applyRoleVisibility();
+    });
+
+    unsubscribeStock = subscribeToStock(
+      stock => {
+        currentStock = stock;
+        renderStockTable();
+      },
+      err => {
+        stockSummary.style.color = 'var(--color-danger)';
+        stockSummary.textContent = '讀取庫存資料失敗：' + err.message;
+      }
+    );
   } else {
+    currentUid = null;
     loginBox.style.display = 'block';
     appContent.style.display = 'none';
     userNav.style.display = 'none';
-    if (unsubscribeStock) {
-      unsubscribeStock();
-      unsubscribeStock = null;
-    }
-    currentStock = [];
   }
 });
+
+// ---------- 角色可視範圍 ----------
+
+function applyRoleVisibility() {
+  const whSet = new Set();
+  currentRoles.forEach(r => (WAREHOUSE_VISIBILITY[r] || []).forEach(w => whSet.add(w)));
+  visibleWarehouses = WAREHOUSES.filter(w => whSet.has(w));
+  isAdmin = currentRoles.includes('管理員');
+
+  const searchBtn = document.querySelector('.tab-btn[data-tab="search"]');
+  const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
+  const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
+
+  const canSeeStock = visibleWarehouses.length > 0;
+  searchBtn.style.display = canSeeStock ? '' : 'none';
+  importBtn.style.display = canSeeStock ? '' : 'none';
+  usersBtn.style.display = isAdmin ? '' : 'none';
+
+  // 如果目前開著的分頁被隱藏了，自動切到第一個看得到的分頁
+  const activeBtn = document.querySelector('.tab-btn.active');
+  if (activeBtn && activeBtn.style.display === 'none') {
+    const firstVisible = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
+    if (firstVisible) firstVisible.click();
+  }
+
+  renderStockTableHead();
+  renderStockTable();
+
+  if (isAdmin && !unsubscribeUsers) {
+    unsubscribeUsers = subscribeToUsers(users => {
+      currentUsers = users;
+      renderUsersTable();
+    });
+  } else if (!isAdmin && unsubscribeUsers) {
+    unsubscribeUsers();
+    unsubscribeUsers = null;
+  }
+}
 
 // ---------- 分頁切換 ----------
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (btn.style.display === 'none') return;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
@@ -118,12 +191,24 @@ function formatExpiry(raw) {
   return s;
 }
 
+function renderStockTableHead() {
+  stockTableHead.innerHTML = `
+    <tr>
+      <th>品號</th>
+      <th>品名</th>
+      ${visibleWarehouses.map(w => `<th>${w}庫存</th><th>${w}最短效期</th>`).join('')}
+    </tr>
+  `;
+}
+
 function renderStockTable() {
+  if (visibleWarehouses.length === 0) return;
   const keyword = searchInput.value.trim().toLowerCase();
 
-  // 依品號分組，把泰山跟台中的庫存併成同一列
+  // 依品號分組，把有權限看到的倉庫庫存併成同一列
   const byItem = new Map();
   currentStock.forEach(s => {
+    if (!visibleWarehouses.includes(s.warehouse)) return;
     if (!byItem.has(s.itemCode)) {
       byItem.set(s.itemCode, { itemCode: s.itemCode, itemName: s.itemName, warehouses: {} });
     }
@@ -139,33 +224,77 @@ function renderStockTable() {
   }
   items.sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
+  const colCount = 2 + visibleWarehouses.length * 2;
+
   stockSummary.style.color = '';
-  stockSummary.textContent = currentStock.length
+  stockSummary.textContent = byItem.size
     ? (keyword ? `共 ${byItem.size} 個品項，篩選後 ${items.length} 筆` : `共 ${byItem.size} 個品項`)
     : '目前沒有庫存資料，請先到「匯入資料」上傳 ERP 檔案';
 
   if (items.length === 0) {
-    stockTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    stockTableBody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
     return;
   }
 
   stockTableBody.innerHTML = items.map(it => {
-    const ts = it.warehouses['泰山'];
-    const tc = it.warehouses['台中'];
+    const cells = visibleWarehouses.map(w => {
+      const s = it.warehouses[w];
+      return `<td>${s ? s.qty : '-'}</td><td>${s ? formatExpiry(s.nearestExpiry) : '-'}</td>`;
+    }).join('');
     return `
     <tr>
       <td>${escapeHTML(it.itemCode)}</td>
       <td>${escapeHTML(it.itemName)}</td>
-      <td>${ts ? ts.qty : '-'}</td>
-      <td>${ts ? formatExpiry(ts.nearestExpiry) : '-'}</td>
-      <td>${tc ? tc.qty : '-'}</td>
-      <td>${tc ? formatExpiry(tc.nearestExpiry) : '-'}</td>
+      ${cells}
     </tr>
   `;
   }).join('');
 }
 
 searchInput.addEventListener('input', renderStockTable);
+
+// ---------- 使用者管理 ----------
+
+function renderUsersTable() {
+  if (!currentUsers.length) {
+    usersTableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; color:#6b7280;">還沒有人登入過</td></tr>`;
+    return;
+  }
+  const sorted = [...currentUsers].sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+  usersTableBody.innerHTML = sorted.map(u => `
+    <tr>
+      <td>${escapeHTML(u.email)}</td>
+      <td>
+        <div class="role-checkboxes">
+          ${ROLES.map(role => `
+            <label class="role-checkbox">
+              <input type="checkbox" data-uid="${u.id}" data-role="${escapeHTML(role)}" ${((u.roles || []).includes(role)) ? 'checked' : ''} />
+              ${escapeHTML(role)}
+            </label>
+          `).join('')}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  usersTableBody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const uid = cb.dataset.uid;
+      const user = currentUsers.find(u => u.id === uid);
+      const roles = new Set(user.roles || []);
+      if (cb.checked) roles.add(cb.dataset.role);
+      else roles.delete(cb.dataset.role);
+      cb.disabled = true;
+      try {
+        await updateUserRoles(uid, Array.from(roles));
+      } catch (err) {
+        alert('更新角色失敗：' + err.message);
+      } finally {
+        cb.disabled = false;
+      }
+    });
+  });
+}
 
 // ---------- 匯入資料 ----------
 

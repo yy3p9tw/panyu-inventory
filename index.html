@@ -31,9 +31,10 @@
     <!-- 主畫面 -->
     <div id="appContent" style="display:none;">
 
-      <div class="tab-row">
+      <div class="tab-row" id="tabRow">
         <button type="button" class="tab-btn active" data-tab="search">品項查詢</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
+        <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
       </div>
 
       <!-- 品項查詢 -->
@@ -43,16 +44,7 @@
           <p class="hint-text" id="stockSummary"></p>
           <div class="table-scroll">
             <table class="data-table">
-              <thead>
-                <tr>
-                  <th>品號</th>
-                  <th>品名</th>
-                  <th>泰山庫存</th>
-                  <th>泰山最短效期</th>
-                  <th>台中庫存</th>
-                  <th>台中最短效期</th>
-                </tr>
-              </thead>
+              <thead id="stockTableHead"></thead>
               <tbody id="stockTableBody"></tbody>
             </table>
           </div>
@@ -72,6 +64,28 @@
             <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none;" />
           </div>
           <p class="hint-text" id="importMsg"></p>
+        </div>
+      </section>
+
+      <!-- 使用者管理（管理員專用） -->
+      <section id="tabUsers" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>使用者管理</h2>
+          <p class="hint-text">
+            這裡列出「曾經登入過」的帳號。新同事第一次用自己的帳號登入後，會自動出現在這份名單，
+            再由管理員勾選這個人可以看到哪些角色的資料。
+          </p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>角色</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

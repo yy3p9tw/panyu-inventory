@@ -158,6 +158,22 @@ main {
   white-space: nowrap;
 }
 
+.role-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  white-space: normal;
+}
+
+.role-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
 .data-table th {
   background: var(--color-bg);
   color: var(--color-text-muted);
