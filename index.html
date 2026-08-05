@@ -59,7 +59,7 @@
       <section id="tabFactory" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>廠務用料</h2>
-          <p class="hint-text">品名、數量、批號。批號是用品號去對「批號」分頁裡泰山廠區的資料查出來的。</p>
+          <p class="hint-text">品名、數量、批號。庫存.xlsx 裡庫別=廠務的部分，批號是即時去對批號.xlsx（泰山廠區）查出來的。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -70,7 +70,7 @@
           </div>
 
           <h2 style="margin-top:24px;">可用原料（泰山）</h2>
-          <p class="hint-text">品名、數量、批號、過期/報廢、標記（有值才顯示）。</p>
+          <p class="hint-text">品名、數量、批號、過期/報廢、標記（有值才顯示）。這個還在等真實 ERP 匯出檔確認格式。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -86,6 +86,7 @@
       <section id="tabSummary" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>彙總</h2>
+          <p class="hint-text">這個還在等真實 ERP 匯出檔確認格式。</p>
           <input type="text" id="summarySearchInput" placeholder="搜尋品號或品名..." />
           <p class="hint-text" id="summaryCount"></p>
           <div class="table-scroll">
@@ -129,7 +130,7 @@
           <div class="table-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>客戶</th><th>品名</th><th>庫別</th><th>寄庫數量</th><th>寄庫日期</th></tr>
+                <tr><th>客戶</th><th>品名</th><th>寄庫數量</th></tr>
               </thead>
               <tbody id="consignmentTableBody"></tbody>
             </table>
@@ -140,10 +141,10 @@
       <!-- 匯入資料 -->
       <section id="tabImport" class="tab-panel" style="display:none;">
         <div class="panel">
-          <h2>匯入 ERP 庫存檔</h2>
+          <h2>匯入 ERP 匯出檔</h2>
           <p class="hint-text">
-            上傳整份 ERP 匯出的 Excel 檔（.xlsx），下面會列出這份檔案裡看得懂的資料，
-            自己選要匯入哪些、按各自的「確認匯入」——不會一按檔案就整批洗掉，你可以一項一項確認。
+            從 ERP 拉出來的檔案，一次一份，系統會照檔名判斷是哪種資料（庫存.xlsx、批號.xlsx、寄庫.xlsx、
+            異動.xlsx、轉撥.xlsx、銷貨.xlsx...），確認沒問題後按「確認匯入」才會真的寫進資料庫。
           </p>
           <div id="importDropZone" class="upload-drop-zone">
             拖曳 Excel 檔到這裡，或點擊選擇檔案
