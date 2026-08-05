@@ -6,7 +6,14 @@ import {
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { subscribeToStock, replaceStockForWarehouses } from './inventory-service.js?v=1';
+import {
+  subscribeToStock, replaceStockForWarehouses,
+  subscribeToFactoryMaterial, replaceFactoryMaterial,
+  subscribeToAvailableMaterial, replaceAvailableMaterial,
+  subscribeToSummary, replaceSummary,
+  subscribeToBatchList, replaceBatchList,
+  subscribeToConsignment, replaceConsignment
+} from './inventory-service.js?v=1';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=1';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -28,8 +35,24 @@ const stockSummary = document.getElementById('stockSummary');
 const importDropZone = document.getElementById('importDropZone');
 const importFileInput = document.getElementById('importFileInput');
 const importMsg = document.getElementById('importMsg');
+const importItemsList = document.getElementById('importItemsList');
 
 const usersTableBody = document.getElementById('usersTableBody');
+
+const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');
+const availableMaterialTableBody = document.getElementById('availableMaterialTableBody');
+
+const summarySearchInput = document.getElementById('summarySearchInput');
+const summaryTableBody = document.getElementById('summaryTableBody');
+const summaryCount = document.getElementById('summaryCount');
+
+const batchSearchInput = document.getElementById('batchSearchInput');
+const batchTableBody = document.getElementById('batchTableBody');
+const batchCount = document.getElementById('batchCount');
+
+const consignmentSearchInput = document.getElementById('consignmentSearchInput');
+const consignmentTableBody = document.getElementById('consignmentTableBody');
+const consignmentCount = document.getElementById('consignmentCount');
 
 const WAREHOUSES = ['泰山', '台中'];
 const ROLES = ['泰山倉管', '台中倉管', '廠務', '會計', '管理員'];
@@ -45,12 +68,24 @@ let currentUid = null;
 let currentRoles = [];
 let visibleWarehouses = [];
 let isAdmin = false;
+let canSeeFactory = false;
+let canSeeSummary = false;
 
 let currentStock = [];
 let currentUsers = [];
+let currentFactoryMaterial = [];
+let currentAvailableMaterial = [];
+let currentSummary = [];
+let currentBatchList = [];
+let currentConsignment = [];
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
+let unsubscribeFactoryMaterial = null;
+let unsubscribeAvailableMaterial = null;
+let unsubscribeSummary = null;
+let unsubscribeBatchList = null;
+let unsubscribeConsignment = null;
 
 // ---------- 登入 ----------
 
@@ -88,9 +123,19 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeOwnProfile) { unsubscribeOwnProfile(); unsubscribeOwnProfile = null; }
   if (unsubscribeStock) { unsubscribeStock(); unsubscribeStock = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
+  if (unsubscribeFactoryMaterial) { unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null; }
+  if (unsubscribeAvailableMaterial) { unsubscribeAvailableMaterial(); unsubscribeAvailableMaterial = null; }
+  if (unsubscribeSummary) { unsubscribeSummary(); unsubscribeSummary = null; }
+  if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
+  if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
   currentRoles = [];
   currentStock = [];
   currentUsers = [];
+  currentFactoryMaterial = [];
+  currentAvailableMaterial = [];
+  currentSummary = [];
+  currentBatchList = [];
+  currentConsignment = [];
   applyRoleVisibility(); // 立刻把畫面收回「沒有任何角色」狀態，避免短暫殘留上一個帳號看到的東西
 
   if (user) {
@@ -132,14 +177,24 @@ function applyRoleVisibility() {
   currentRoles.forEach(r => (WAREHOUSE_VISIBILITY[r] || []).forEach(w => whSet.add(w)));
   visibleWarehouses = WAREHOUSES.filter(w => whSet.has(w));
   isAdmin = currentRoles.includes('管理員');
+  canSeeFactory = currentRoles.includes('廠務') || isAdmin;
+  canSeeSummary = currentRoles.includes('會計') || isAdmin;
 
   const searchBtn = document.querySelector('.tab-btn[data-tab="search"]');
+  const factoryBtn = document.querySelector('.tab-btn[data-tab="factory"]');
+  const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
+  const batchBtn = document.querySelector('.tab-btn[data-tab="batch"]');
+  const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
 
   const canSeeStock = visibleWarehouses.length > 0;
   searchBtn.style.display = canSeeStock ? '' : 'none';
-  importBtn.style.display = canSeeStock ? '' : 'none';
+  factoryBtn.style.display = canSeeFactory ? '' : 'none';
+  summaryBtn.style.display = canSeeSummary ? '' : 'none';
+  batchBtn.style.display = canSeeStock ? '' : 'none';
+  consignmentBtn.style.display = canSeeStock ? '' : 'none';
+  importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
 
   // 如果目前開著的分頁被隱藏了，自動切到第一個看得到的分頁
@@ -160,6 +215,49 @@ function applyRoleVisibility() {
   } else if (!isAdmin && unsubscribeUsers) {
     unsubscribeUsers();
     unsubscribeUsers = null;
+  }
+
+  if (canSeeFactory && !unsubscribeFactoryMaterial) {
+    unsubscribeFactoryMaterial = subscribeToFactoryMaterial(rows => {
+      currentFactoryMaterial = rows;
+      renderFactoryMaterialTable();
+    });
+    unsubscribeAvailableMaterial = subscribeToAvailableMaterial(rows => {
+      currentAvailableMaterial = rows;
+      renderAvailableMaterialTable();
+    });
+  } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
+    unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
+    unsubscribeAvailableMaterial(); unsubscribeAvailableMaterial = null;
+    currentFactoryMaterial = [];
+    currentAvailableMaterial = [];
+  }
+
+  if (canSeeSummary && !unsubscribeSummary) {
+    unsubscribeSummary = subscribeToSummary(rows => {
+      currentSummary = rows;
+      renderSummaryTable();
+    });
+  } else if (!canSeeSummary && unsubscribeSummary) {
+    unsubscribeSummary();
+    unsubscribeSummary = null;
+    currentSummary = [];
+  }
+
+  if (canSeeStock && !unsubscribeBatchList) {
+    unsubscribeBatchList = subscribeToBatchList(rows => {
+      currentBatchList = rows;
+      renderBatchTable();
+    });
+    unsubscribeConsignment = subscribeToConsignment(rows => {
+      currentConsignment = rows;
+      renderConsignmentTable();
+    });
+  } else if (!canSeeStock && unsubscribeBatchList) {
+    unsubscribeBatchList(); unsubscribeBatchList = null;
+    unsubscribeConsignment(); unsubscribeConsignment = null;
+    currentBatchList = [];
+    currentConsignment = [];
   }
 }
 
@@ -191,6 +289,18 @@ function formatExpiry(raw) {
   return s;
 }
 
+function renderQtyCell(s) {
+  const badges = [];
+  if (s.lockedQty) badges.push(`<span class="badge badge-locked" title="鎖庫前結存：${s.qtyBeforeLock ?? '-'}">鎖庫 ${s.lockedQty}</span>`);
+  if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
+  if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
+  if (s.batches && s.batches.length) {
+    const title = s.batches.map(b => `${formatExpiry(b.batchNo)}：${b.qty}`).join('\n');
+    badges.push(`<span class="badge badge-batch" title="${escapeHTML(title)}">批號 ${s.batches.length} 筆</span>`);
+  }
+  return `${s.qty}${badges.length ? ' ' + badges.join(' ') : ''}`;
+}
+
 function renderStockTableHead() {
   stockTableHead.innerHTML = `
     <tr>
@@ -205,10 +315,14 @@ function renderStockTable() {
   if (visibleWarehouses.length === 0) return;
   const keyword = searchInput.value.trim().toLowerCase();
 
+  // 純泰山倉管（沒有管理員身分）看不到「註記=隱藏」的品項，這是參照表帶過來的規則
+  const applyTaishanHideRule = currentRoles.includes('泰山倉管') && !isAdmin;
+
   // 依品號分組，把有權限看到的倉庫庫存併成同一列
   const byItem = new Map();
   currentStock.forEach(s => {
     if (!visibleWarehouses.includes(s.warehouse)) return;
+    if (applyTaishanHideRule && s.warehouse === '泰山' && s.hiddenFromTaishanManager) return;
     if (!byItem.has(s.itemCode)) {
       byItem.set(s.itemCode, { itemCode: s.itemCode, itemName: s.itemName, warehouses: {} });
     }
@@ -239,7 +353,7 @@ function renderStockTable() {
   stockTableBody.innerHTML = items.map(it => {
     const cells = visibleWarehouses.map(w => {
       const s = it.warehouses[w];
-      return `<td>${s ? s.qty : '-'}</td><td>${s ? formatExpiry(s.nearestExpiry) : '-'}</td>`;
+      return `<td>${s ? renderQtyCell(s) : '-'}</td><td>${s ? formatExpiry(s.nearestExpiry) : '-'}</td>`;
     }).join('');
     return `
     <tr>
@@ -252,6 +366,152 @@ function renderStockTable() {
 }
 
 searchInput.addEventListener('input', renderStockTable);
+
+// ---------- 廠務物料 ----------
+
+function renderFactoryMaterialTable() {
+  if (!currentFactoryMaterial.length) {
+    factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    return;
+  }
+  const sorted = [...currentFactoryMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  factoryMaterialTableBody.innerHTML = sorted.map(r => `
+    <tr>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${r.qty}</td>
+      <td>${r.batchNo ? formatExpiry(r.batchNo) : '-'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderAvailableMaterialTable() {
+  if (!currentAvailableMaterial.length) {
+    availableMaterialTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    return;
+  }
+  const sorted = [...currentAvailableMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  availableMaterialTableBody.innerHTML = sorted.map(r => `
+    <tr>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${r.qty}</td>
+      <td>${r.batchNo ? formatExpiry(r.batchNo) : '-'}</td>
+      <td>${escapeHTML(r.expired)}</td>
+      <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
+    </tr>
+  `).join('');
+}
+
+// ---------- 彙總 ----------
+
+function renderSummaryTable() {
+  const keyword = summarySearchInput.value.trim().toLowerCase();
+  let items = currentSummary;
+  if (keyword) {
+    items = items.filter(it =>
+      (it.itemCode || '').toLowerCase().includes(keyword) ||
+      (it.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+  summaryCount.textContent = currentSummary.length
+    ? (keyword ? `共 ${currentSummary.length} 個品項，篩選後 ${items.length} 筆` : `共 ${currentSummary.length} 個品項`)
+    : '目前沒有彙總資料，請先到「匯入資料」上傳 ERP 檔案';
+
+  if (items.length === 0) {
+    summaryTableBody.innerHTML = `<tr><td colspan="12" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    return;
+  }
+
+  summaryTableBody.innerHTML = items.map(r => `
+    <tr>
+      <td>${escapeHTML(r.itemCode)}</td>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${r.taishanQty}</td>
+      <td>${r.taichungQty}</td>
+      <td>${r.totalQty}</td>
+      <td>${r.unitWeight}</td>
+      <td>${r.totalWeight}</td>
+      <td>${escapeHTML(r.purchaseType)}</td>
+      <td>${escapeHTML(r.category)}</td>
+      <td>${escapeHTML(r.majorCategory)}</td>
+      <td>${escapeHTML(r.origin)}</td>
+      <td>${(r.vendors || []).map(v => `${escapeHTML(v.label)} ${v.qty}`).join('，')}</td>
+    </tr>
+  `).join('');
+}
+
+summarySearchInput.addEventListener('input', renderSummaryTable);
+
+// ---------- 批號 ----------
+
+function renderBatchTable() {
+  const keyword = batchSearchInput.value.trim().toLowerCase();
+  let items = currentBatchList;
+  if (keyword) {
+    items = items.filter(it =>
+      (it.itemCode || '').toLowerCase().includes(keyword) ||
+      (it.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '') || (a.batchNo || '').localeCompare(b.batchNo || ''));
+
+  batchCount.textContent = currentBatchList.length
+    ? (keyword ? `共 ${currentBatchList.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentBatchList.length} 筆`)
+    : '目前沒有批號資料，請先到「匯入資料」上傳 ERP 檔案';
+
+  if (items.length === 0) {
+    batchTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    return;
+  }
+
+  batchTableBody.innerHTML = items.map(r => `
+    <tr>
+      <td>${escapeHTML(r.itemCode)}</td>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${escapeHTML(r.warehouse)}</td>
+      <td>${r.batchNo ? formatExpiry(r.batchNo) : '-'}</td>
+      <td>${r.qty}</td>
+    </tr>
+  `).join('');
+}
+
+batchSearchInput.addEventListener('input', renderBatchTable);
+
+// ---------- 寄庫 ----------
+
+function renderConsignmentTable() {
+  const keyword = consignmentSearchInput.value.trim().toLowerCase();
+  let items = currentConsignment;
+  if (keyword) {
+    items = items.filter(it =>
+      (it.customer || '').toLowerCase().includes(keyword) ||
+      (it.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
+  items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
+
+  consignmentCount.textContent = currentConsignment.length
+    ? (keyword ? `共 ${currentConsignment.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentConsignment.length} 筆`)
+    : '目前沒有寄庫資料，請先到「匯入資料」上傳 ERP 檔案';
+
+  if (items.length === 0) {
+    consignmentTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    return;
+  }
+
+  consignmentTableBody.innerHTML = items.map(r => `
+    <tr>
+      <td>${escapeHTML(r.customer)}</td>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${escapeHTML(r.warehouse)}</td>
+      <td>${r.qty}</td>
+      <td>${escapeHTML(r.consignmentDate) || '-'}</td>
+    </tr>
+  `).join('');
+}
+
+consignmentSearchInput.addEventListener('input', renderConsignmentTable);
 
 // ---------- 使用者管理 ----------
 
@@ -317,6 +577,13 @@ function parseWarehouseSheet(sheet, warehouse) {
   const idxQty = findColumnIndex(header, ['結存數量']);
   const idxExpiry = findColumnIndex(header, ['最短效期']);
   const idxNote = findColumnIndex(header, ['備註']);
+  // 以下都只有泰山有、台中沒有（或台中目前是空的）：鎖庫數量本身兩邊都有，但只有泰山有前結存/過期報廢/註記/散裝
+  const idxLocked = findColumnIndex(header, ['鎖庫']);
+  const idxBeforeLock = findColumnIndex(header, ['鎖庫前結存']);
+  const idxExpired = findColumnIndex(header, ['過期/報廢']);
+  const idxRemark = findColumnIndex(header, ['註記']);
+  // 這欄標題寫「盤點」但實際內容是散裝標記（只會是空白或「散」），是參照表帶過來的，跟標題文字無關
+  const idxSplitFlag = findColumnIndex(header, ['盤點']);
 
   if (idxCode === -1 || idxQty === -1) {
     throw new Error(`「${warehouse}」分頁找不到「品號」或「結存數量」欄位，格式可能跟預期不同`);
@@ -327,6 +594,7 @@ function parseWarehouseSheet(sheet, warehouse) {
     const row = rows[i];
     const itemCode = (row[idxCode] || '').toString().trim();
     if (!itemCode) continue;
+    const remark = idxRemark !== -1 ? (row[idxRemark] || '').toString().trim() : '';
     records.push({
       itemCode,
       itemName: idxName !== -1 ? (row[idxName] || '').toString().trim() : '',
@@ -334,41 +602,424 @@ function parseWarehouseSheet(sheet, warehouse) {
       warehouseLocation: idxLoc !== -1 ? (row[idxLoc] || '').toString().trim() : '',
       qty: idxQty !== -1 ? Number(row[idxQty]) || 0 : 0,
       nearestExpiry: idxExpiry !== -1 ? (row[idxExpiry] || '').toString().trim() : '',
-      note: idxNote !== -1 ? (row[idxNote] || '').toString().trim() : ''
+      note: idxNote !== -1 ? (row[idxNote] || '').toString().trim() : '',
+      // ERP 內部為了方便公式加總，鎖庫數量在原始欄位裡是負數存的，沒有業務意義，取絕對值還原成實際數量
+      lockedQty: idxLocked !== -1 ? Math.abs(Number(row[idxLocked]) || 0) : 0,
+      qtyBeforeLock: idxBeforeLock !== -1 ? Number(row[idxBeforeLock]) || 0 : null,
+      expired: idxExpired !== -1 ? (row[idxExpired] || '').toString().trim() : '',
+      remark,
+      hiddenFromTaishanManager: remark === '隱藏',
+      isSplit: idxSplitFlag !== -1 ? (row[idxSplitFlag] || '').toString().trim() === '散' : false
     });
   }
   return records;
 }
 
-async function handleImportFile(file) {
+// 批號分頁裡同一組欄位（品號,品名,規格,單位,包裝單位,批號,庫別...）出現三次：
+// 一組是台中庫的真實資料，另外兩組是泰山廠區的資料但彼此是重複貼上（內容一樣）。
+// 找出所有候選區塊（每個區塊的欄位位置），呼叫的地方再依實際庫別內容挑選要用哪一個。
+function findBatchSheetBlocks(header) {
+  const expectedSeq = ['品號', '品名', '規格', '單位', '包裝單位', '批號', '庫別'];
+  const candidates = [];
+  for (let i = 0; i < header.length; i++) {
+    if ((header[i] || '').toString().trim() !== '品號') continue;
+    const matches = expectedSeq.every((name, offset) => (header[i + offset] || '').toString().trim() === name);
+    if (!matches) continue;
+    const window = header.slice(i, i + 20);
+    const packagedQtyOffset = window.findIndex(h => (h || '').toString().trim() === '期末包裝庫存');
+    candidates.push({
+      code: i, name: i + 1, batchNo: i + 5, warehouse: i + 6,
+      packagedQty: packagedQtyOffset !== -1 ? i + packagedQtyOffset : -1
+    });
+  }
+  return candidates;
+}
+
+function pickBatchBlock(candidates, rows, warehouseName) {
+  return candidates.find(c =>
+    rows.slice(1, 20).some(r => (r[c.warehouse] || '').toString().trim() === warehouseName)
+  ) || null;
+}
+
+// 建立「品號 -> 批號清單」對照表，依 warehouseName 選出批號分頁裡對應的那個區塊
+// （廠務用料自己的分頁沒有批號欄；廠務的料實際上是泰山庫存撥用的，所以要去泰山廠區底下找）
+function buildBatchLookup(sheet, warehouseName) {
+  const lookup = new Map();
+  if (!sheet) return lookup;
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return lookup;
+
+  const cols = pickBatchBlock(findBatchSheetBlocks(rows[0]), rows, warehouseName);
+  if (!cols) return lookup;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const itemCode = (row[cols.code] || '').toString().trim();
+    if (!itemCode) continue;
+    const warehouse = (row[cols.warehouse] || '').toString().trim();
+    if (warehouse !== warehouseName) continue;
+    const batchNo = (row[cols.batchNo] || '').toString().trim();
+    const packagedQty = cols.packagedQty !== -1 ? Number(row[cols.packagedQty]) || 0 : 0;
+    if (!lookup.has(itemCode)) lookup.set(itemCode, []);
+    lookup.get(itemCode).push({ batchNo, packagedQty });
+  }
+  return lookup;
+}
+
+// 給「批號」分頁自己的瀏覽畫面用：把泰山廠區跟台中庫兩個區塊都攤平成一筆一筆的清單
+function parseBatchListSheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const candidates = findBatchSheetBlocks(rows[0]);
+
+  const blocks = ['泰山廠區', '台中庫']
+    .map(wh => pickBatchBlock(candidates, rows, wh))
+    .filter(Boolean);
+
+  const records = [];
+  for (const cols of blocks) {
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const itemCode = (row[cols.code] || '').toString().trim();
+      if (!itemCode) continue;
+      const warehouse = (row[cols.warehouse] || '').toString().trim();
+      if (!warehouse) continue;
+      records.push({
+        itemCode,
+        itemName: (row[cols.name] || '').toString().trim(),
+        warehouse,
+        batchNo: (row[cols.batchNo] || '').toString().trim(),
+        qty: cols.packagedQty !== -1 ? Number(row[cols.packagedQty]) || 0 : 0
+      });
+    }
+  }
+  return records;
+}
+
+// 寄庫分頁：小計列的「庫別」欄位是數字不是倉別名稱，要排除；
+// 逐日欄位夾在「上月數量」跟「本日數量」中間，用位置而不是欄名找，因為每天的欄名都不一樣。
+function parseConsignmentSheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+
+  const idxCustomer = findColumnIndex(header, ['客戶']);
+  const idxItemName = findColumnIndex(header, ['品名']);
+  const idxWarehouse = findColumnIndex(header, ['庫別']);
+  const idxLastMonth = findColumnIndex(header, ['上月數量']);
+  const idxTodayQty = findColumnIndex(header, ['本日數量']);
+  const idxDate = findColumnIndex(header, ['寄庫日期']);
+
+  if (idxCustomer === -1 || idxLastMonth === -1 || idxTodayQty === -1) {
+    throw new Error('「寄庫」分頁找不到「客戶」「上月數量」或「本日數量」欄位，格式可能跟預期不同');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const customer = (row[idxCustomer] || '').toString().trim();
+    if (!customer) continue;
+    const warehouseRaw = (row[idxWarehouse] || '').toString().trim();
+    // 庫別欄位是數字的話，這列其實是小計/彙總列，不是真正的一筆寄庫資料
+    if (warehouseRaw === '' || !isNaN(Number(warehouseRaw))) continue;
+
+    let qty = Number(row[idxLastMonth]) || 0;
+    for (let c = idxLastMonth + 1; c < idxTodayQty; c++) {
+      qty += Number(row[c]) || 0;
+    }
+
+    records.push({
+      customer,
+      itemName: idxItemName !== -1 ? (row[idxItemName] || '').toString().trim() : '',
+      warehouse: warehouseRaw,
+      qty,
+      consignmentDate: idxDate !== -1 ? (row[idxDate] || '').toString().trim() : ''
+    });
+  }
+  return records;
+}
+
+function parseFactoryMaterialSheet(sheet, batchLookup) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+  const idxCode = findColumnIndex(header, ['品號']);
+  const idxName = findColumnIndex(header, ['品名']);
+  const idxQty = findColumnIndex(header, ['結存數量']);
+  if (idxCode === -1 || idxQty === -1) {
+    throw new Error('「廠務用料」分頁找不到「品號」或「結存數量」欄位，格式可能跟預期不同');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const itemCode = (row[idxCode] || '').toString().trim();
+    if (!itemCode) continue;
+    const itemName = idxName !== -1 ? (row[idxName] || '').toString().trim() : '';
+    const qty = Number(row[idxQty]) || 0;
+    const batches = batchLookup.get(itemCode);
+    if (batches && batches.length) {
+      // 對到批號就拆成一列一個批號；沒對到批號的品項還是要顯示，用結存數量當唯一一列
+      batches.forEach(b => records.push({ itemCode, itemName, qty: b.packagedQty, batchNo: b.batchNo }));
+    } else {
+      records.push({ itemCode, itemName, qty, batchNo: '' });
+    }
+  }
+  return records;
+}
+
+function parseAvailableMaterialSheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+  const idxCode = findColumnIndex(header, ['品號']);
+  const idxName = findColumnIndex(header, ['品名']);
+  const idxQty = findColumnIndex(header, ['結存數量']);
+  const idxBatch = findColumnIndex(header, ['批號']);
+  const idxExpired = findColumnIndex(header, ['過期/報廢']);
+  const idxTag = findColumnIndex(header, ['廠務']);
+  if (idxCode === -1 || idxQty === -1) {
+    throw new Error('「可用原料(泰山)」分頁找不到「品號」或「結存數量」欄位，格式可能跟預期不同');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const itemCode = (row[idxCode] || '').toString().trim();
+    if (!itemCode) continue;
+    records.push({
+      itemCode,
+      itemName: idxName !== -1 ? (row[idxName] || '').toString().trim() : '',
+      qty: Number(row[idxQty]) || 0,
+      batchNo: idxBatch !== -1 ? (row[idxBatch] || '').toString().trim() : '',
+      expired: idxExpired !== -1 ? (row[idxExpired] || '').toString().trim() : '',
+      tag: idxTag !== -1 ? (row[idxTag] || '').toString().trim() : ''
+    });
+  }
+  return records;
+}
+
+// 彙總分頁第一列是「庫別數量 1789」這種標題文字，不是欄位名，真正的欄位名在第二列
+function parseSummarySheet(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (rows.length < 2) return [];
+  const header = rows[1];
+
+  const idxCode = findColumnIndex(header, ['品號']);
+  const idxName = findColumnIndex(header, ['品名']);
+  const idxTaishan = findColumnIndex(header, ['泰山']);
+  const idxTaichung = findColumnIndex(header, ['台中']);
+  const idxTotalQty = findColumnIndex(header, ['總計件數']);
+  const idxUnitWeight = findColumnIndex(header, ['淨重']);
+  const idxTotalWeight = findColumnIndex(header, ['總淨重KG']);
+  const idxPurchase = findColumnIndex(header, ['採購']);
+  const idxCategory = findColumnIndex(header, ['類別']);
+  const idxMajorCategory = findColumnIndex(header, ['大類']);
+  const idxOrigin = findColumnIndex(header, ['產地']);
+
+  if (idxCode === -1 || idxTotalQty === -1) {
+    throw new Error('「彙總」分頁找不到「品號」或「總計件數」欄位，格式可能跟預期不同');
+  }
+
+  // 供應商別數量/淨重是分開命名的（例如「磐宇/浜數量」配「盈浜淨重」，不是同一個字首），照實際欄名對
+  const vendorDefs = [
+    { label: '磐宇/浜', qtyIdx: findColumnIndex(header, ['磐宇/浜數量']), weightIdx: findColumnIndex(header, ['盈浜淨重']) },
+    { label: '御宏', qtyIdx: findColumnIndex(header, ['御宏數量']), weightIdx: findColumnIndex(header, ['御宏淨重']) },
+    { label: '長紘', qtyIdx: findColumnIndex(header, ['長紘數量']), weightIdx: findColumnIndex(header, ['長紘淨重']) },
+    { label: '盈冠', qtyIdx: findColumnIndex(header, ['盈冠數量']), weightIdx: findColumnIndex(header, ['盈冠淨重']) },
+    { label: '國內', qtyIdx: findColumnIndex(header, ['國內數量']), weightIdx: findColumnIndex(header, ['國內淨重']) }
+  ];
+
+  const records = [];
+  for (let i = 2; i < rows.length; i++) {
+    const row = rows[i];
+    const itemCode = (row[idxCode] || '').toString().trim();
+    if (!itemCode) continue;
+
+    const vendors = vendorDefs
+      .map(v => ({
+        label: v.label,
+        qty: v.qtyIdx !== -1 ? Number(row[v.qtyIdx]) || 0 : 0,
+        weight: v.weightIdx !== -1 ? Number(row[v.weightIdx]) || 0 : 0
+      }))
+      .filter(v => v.qty);
+
+    records.push({
+      itemCode,
+      itemName: idxName !== -1 ? (row[idxName] || '').toString().trim() : '',
+      taishanQty: idxTaishan !== -1 ? Number(row[idxTaishan]) || 0 : 0,
+      taichungQty: idxTaichung !== -1 ? Number(row[idxTaichung]) || 0 : 0,
+      totalQty: Number(row[idxTotalQty]) || 0,
+      unitWeight: idxUnitWeight !== -1 ? Number(row[idxUnitWeight]) || 0 : 0,
+      totalWeight: idxTotalWeight !== -1 ? Number(row[idxTotalWeight]) || 0 : 0,
+      purchaseType: idxPurchase !== -1 ? (row[idxPurchase] || '').toString().trim() : '',
+      category: idxCategory !== -1 ? (row[idxCategory] || '').toString().trim() : '',
+      majorCategory: idxMajorCategory !== -1 ? (row[idxMajorCategory] || '').toString().trim() : '',
+      origin: idxOrigin !== -1 ? (row[idxOrigin] || '').toString().trim() : '',
+      vendors
+    });
+  }
+  return records;
+}
+
+// 每一種資料各自獨立匯入：上傳檔案只是解析、不會馬上寫入，
+// 每一項自己按「確認匯入」才會真的動到資料庫，互不影響。
+const IMPORT_ITEMS = [
+  {
+    key: 'stock',
+    label: '泰山 / 台中 庫存',
+    detect: wb => WAREHOUSES.some(w => !!wb.Sheets[w]),
+    prepare: wb => {
+      const allRecords = [];
+      const foundWarehouses = [];
+      for (const warehouse of WAREHOUSES) {
+        const sheet = wb.Sheets[warehouse];
+        if (!sheet) continue;
+        allRecords.push(...parseWarehouseSheet(sheet, warehouse));
+        foundWarehouses.push(warehouse);
+      }
+      const taichungBatchLookup = buildBatchLookup(wb.Sheets['批號'], '台中庫');
+      allRecords.forEach(r => {
+        if (r.warehouse !== '台中') return;
+        r.batches = (taichungBatchLookup.get(r.itemCode) || []).map(b => ({ batchNo: b.batchNo, qty: b.packagedQty }));
+      });
+      return { allRecords, foundWarehouses };
+    },
+    describe: data => `${data.foundWarehouses.join('、')}，共 ${data.allRecords.length} 筆`,
+    run: async data => {
+      const result = await replaceStockForWarehouses(data.allRecords, data.foundWarehouses);
+      return `已更新「${data.foundWarehouses.join('、')}」庫存 ${result.written} 筆（清除舊資料 ${result.deleted} 筆）`;
+    }
+  },
+  {
+    key: 'factory',
+    label: '廠務用料',
+    detect: wb => !!wb.Sheets['廠務用料'],
+    prepare: wb => parseFactoryMaterialSheet(wb.Sheets['廠務用料'], buildBatchLookup(wb.Sheets['批號'], '泰山廠區')),
+    describe: records => `共 ${records.length} 筆`,
+    run: async records => {
+      const result = await replaceFactoryMaterial(records);
+      return `已更新廠務用料 ${result.written} 筆`;
+    }
+  },
+  {
+    key: 'available',
+    label: '可用原料(泰山)',
+    detect: wb => !!wb.Sheets['可用原料(泰山)'],
+    prepare: wb => parseAvailableMaterialSheet(wb.Sheets['可用原料(泰山)']),
+    describe: records => `共 ${records.length} 筆`,
+    run: async records => {
+      const result = await replaceAvailableMaterial(records);
+      return `已更新可用原料(泰山) ${result.written} 筆`;
+    }
+  },
+  {
+    key: 'summary',
+    label: '彙總',
+    detect: wb => !!wb.Sheets['彙總'],
+    prepare: wb => parseSummarySheet(wb.Sheets['彙總']),
+    describe: records => `共 ${records.length} 筆`,
+    run: async records => {
+      const result = await replaceSummary(records);
+      return `已更新彙總 ${result.written} 筆`;
+    }
+  },
+  {
+    key: 'batchList',
+    label: '批號',
+    detect: wb => !!wb.Sheets['批號'],
+    prepare: wb => parseBatchListSheet(wb.Sheets['批號']),
+    describe: records => `共 ${records.length} 筆`,
+    run: async records => {
+      const result = await replaceBatchList(records);
+      return `已更新批號 ${result.written} 筆`;
+    }
+  },
+  {
+    key: 'consignment',
+    label: '寄庫',
+    detect: wb => !!wb.Sheets['寄庫'],
+    prepare: wb => parseConsignmentSheet(wb.Sheets['寄庫']),
+    describe: records => `共 ${records.length} 筆`,
+    run: async records => {
+      const result = await replaceConsignment(records);
+      return `已更新寄庫 ${result.written} 筆`;
+    }
+  }
+];
+
+let pendingWorkbook = null;
+let pendingImportData = {};
+
+async function handleFileSelected(file) {
   importMsg.style.color = 'var(--color-text-muted)';
   importMsg.textContent = '讀取檔案中...';
+  importItemsList.innerHTML = '';
+  pendingWorkbook = null;
+  pendingImportData = {};
   try {
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array' });
-
-    const allRecords = [];
-    const foundWarehouses = [];
-    for (const warehouse of WAREHOUSES) {
-      const sheet = workbook.Sheets[warehouse];
-      if (!sheet) continue;
-      const records = parseWarehouseSheet(sheet, warehouse);
-      allRecords.push(...records);
-      foundWarehouses.push(warehouse);
-    }
-
-    if (foundWarehouses.length === 0) {
-      throw new Error('這份檔案裡找不到「泰山」或「台中」分頁，確認上傳的是正確的 ERP 匯出檔');
-    }
-
-    importMsg.textContent = `解析完成，共 ${allRecords.length} 筆，正在寫入資料庫...`;
-    const result = await replaceStockForWarehouses(allRecords, foundWarehouses);
-
-    importMsg.style.color = 'var(--color-success)';
-    importMsg.textContent = `匯入成功！已更新「${foundWarehouses.join('、')}」共 ${result.written} 筆庫存資料（清除舊資料 ${result.deleted} 筆）`;
+    pendingWorkbook = XLSX.read(buffer, { type: 'array' });
+    renderImportItems();
+    importMsg.style.color = '';
+    importMsg.textContent = '檔案讀取完成，選擇要匯入的項目：';
   } catch (err) {
     importMsg.style.color = 'var(--color-danger)';
-    importMsg.textContent = '匯入失敗：' + err.message;
+    importMsg.textContent = '讀取檔案失敗：' + err.message;
+  }
+}
+
+function renderImportItems() {
+  const detected = IMPORT_ITEMS.filter(item => item.detect(pendingWorkbook));
+
+  if (!detected.length) {
+    importItemsList.innerHTML = `<p class="hint-text">這份檔案裡沒有找到看得懂的分頁（泰山/台中/廠務用料/可用原料(泰山)/彙總/批號/寄庫），確認上傳的是正確的 ERP 匯出檔。</p>`;
+    return;
+  }
+
+  importItemsList.innerHTML = detected.map(item => {
+    let desc = '';
+    let error = '';
+    try {
+      const prepared = item.prepare(pendingWorkbook);
+      pendingImportData[item.key] = prepared;
+      desc = item.describe(prepared);
+    } catch (err) {
+      error = err.message;
+    }
+    return `
+      <div class="import-item">
+        <div class="import-item-info">
+          <strong>${escapeHTML(item.label)}</strong>
+          <span class="hint-text" data-desc-for="${item.key}">${error ? escapeHTML(error) : escapeHTML(desc)}</span>
+        </div>
+        <button type="button" class="secondary" data-import-key="${item.key}" ${error ? 'disabled' : ''}>確認匯入</button>
+      </div>
+    `;
+  }).join('');
+
+  importItemsList.querySelectorAll('button[data-import-key]').forEach(btn => {
+    btn.addEventListener('click', () => runImportItem(btn.dataset.importKey));
+  });
+}
+
+async function runImportItem(key) {
+  const item = IMPORT_ITEMS.find(i => i.key === key);
+  const data = pendingImportData[key];
+  if (!item || !data) return;
+  const btn = importItemsList.querySelector(`button[data-import-key="${key}"]`);
+  btn.disabled = true;
+  btn.textContent = '匯入中...';
+  try {
+    const message = await item.run(data);
+    importMsg.style.color = 'var(--color-success)';
+    importMsg.textContent = message;
+    btn.textContent = '已匯入 ✓';
+  } catch (err) {
+    importMsg.style.color = 'var(--color-danger)';
+    importMsg.textContent = `「${item.label}」匯入失敗：` + err.message;
+    btn.disabled = false;
+    btn.textContent = '確認匯入';
   }
 }
 
@@ -387,11 +1038,11 @@ importDropZone.addEventListener('drop', e => {
   e.preventDefault();
   importDropZone.classList.remove('dragover');
   const file = e.dataTransfer.files[0];
-  if (file) handleImportFile(file);
+  if (file) handleFileSelected(file);
 });
 
 importFileInput.addEventListener('change', () => {
   const file = importFileInput.files[0];
-  if (file) handleImportFile(file);
+  if (file) handleFileSelected(file);
   importFileInput.value = '';
 });

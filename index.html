@@ -33,6 +33,10 @@
 
       <div class="tab-row" id="tabRow">
         <button type="button" class="tab-btn active" data-tab="search">品項查詢</button>
+        <button type="button" class="tab-btn" data-tab="factory">廠務物料</button>
+        <button type="button" class="tab-btn" data-tab="summary">彙總</button>
+        <button type="button" class="tab-btn" data-tab="batch">批號</button>
+        <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
         <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
       </div>
@@ -51,19 +55,102 @@
         </div>
       </section>
 
+      <!-- 廠務物料（廠務角色專用） -->
+      <section id="tabFactory" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>廠務用料</h2>
+          <p class="hint-text">品名、數量、批號。批號是用品號去對「批號」分頁裡泰山廠區的資料查出來的。</p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品名</th><th>數量</th><th>批號</th></tr>
+              </thead>
+              <tbody id="factoryMaterialTableBody"></tbody>
+            </table>
+          </div>
+
+          <h2 style="margin-top:24px;">可用原料（泰山）</h2>
+          <p class="hint-text">品名、數量、批號、過期/報廢、標記（有值才顯示）。</p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品名</th><th>數量</th><th>批號</th><th>過期/報廢</th><th>標記</th></tr>
+              </thead>
+              <tbody id="availableMaterialTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 彙總（會計角色專用） -->
+      <section id="tabSummary" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>彙總</h2>
+          <input type="text" id="summarySearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="summaryCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>品號</th><th>品名</th><th>泰山</th><th>台中</th><th>總計件數</th>
+                  <th>單位淨重</th><th>總淨重KG</th><th>採購</th><th>類別</th><th>大類</th><th>產地</th><th>供應商別</th>
+                </tr>
+              </thead>
+              <tbody id="summaryTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 批號 -->
+      <section id="tabBatch" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>批號</h2>
+          <input type="text" id="batchSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="batchCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>庫別</th><th>批號</th><th>包裝數量</th></tr>
+              </thead>
+              <tbody id="batchTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 寄庫 -->
+      <section id="tabConsignment" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>寄庫</h2>
+          <p class="hint-text">貨還在泰山/台中倉庫，只是登記在客戶的寄庫帳上。</p>
+          <input type="text" id="consignmentSearchInput" placeholder="搜尋客戶或品名..." />
+          <p class="hint-text" id="consignmentCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>客戶</th><th>品名</th><th>庫別</th><th>寄庫數量</th><th>寄庫日期</th></tr>
+              </thead>
+              <tbody id="consignmentTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- 匯入資料 -->
       <section id="tabImport" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>匯入 ERP 庫存檔</h2>
           <p class="hint-text">
-            直接上傳整份 ERP 匯出的 Excel 檔（.xlsx），系統會自動找出「泰山」跟「台中」這兩個分頁，
-            重新整理庫存資料。匯入會完全取代這兩個倉庫目前的庫存資料，用最新的檔案內容為準。
+            上傳整份 ERP 匯出的 Excel 檔（.xlsx），下面會列出這份檔案裡看得懂的資料，
+            自己選要匯入哪些、按各自的「確認匯入」——不會一按檔案就整批洗掉，你可以一項一項確認。
           </p>
           <div id="importDropZone" class="upload-drop-zone">
             拖曳 Excel 檔到這裡，或點擊選擇檔案
             <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none;" />
           </div>
           <p class="hint-text" id="importMsg"></p>
+          <div id="importItemsList"></div>
         </div>
       </section>
 
