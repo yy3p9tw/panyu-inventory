@@ -205,6 +205,28 @@ export async function replaceConsignment(records) {
   return replaceWholeCollection('consignment', docs);
 }
 
+// ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------
+// 泰山/台中庫存數字只反映「已核完」的單據，這裡存的是還沒核完、需要另外加減回庫存數字的部分。
+
+export function subscribeToPendingAdjustments(callback, onError) {
+  return subscribeToCollection('pendingAdjustments', callback, onError);
+}
+
+// records: [{ itemCode, warehouse, deltaQty, source }]
+export async function replacePendingAdjustments(records) {
+  const docs = records.map((r, i) => ({
+    id: `${sanitizeIdPart(r.itemCode)}__${r.warehouse}__${i}`,
+    data: {
+      itemCode: r.itemCode,
+      warehouse: r.warehouse,
+      deltaQty: r.deltaQty || 0,
+      source: r.source || '',
+      updatedAt: Date.now()
+    }
+  }));
+  return replaceWholeCollection('pendingAdjustments', docs);
+}
+
 // ---------- 彙總（會計角色用）：每次匯入完全覆蓋 ----------
 
 export function subscribeToSummary(callback, onError) {

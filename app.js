@@ -12,7 +12,8 @@ import {
   subscribeToAvailableMaterial, replaceAvailableMaterial,
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
-  subscribeToConsignment, replaceConsignment
+  subscribeToConsignment, replaceConsignment,
+  subscribeToPendingAdjustments, replacePendingAdjustments
 } from './inventory-service.js?v=1';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=1';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
@@ -78,6 +79,7 @@ let currentAvailableMaterial = [];
 let currentSummary = [];
 let currentBatchList = [];
 let currentConsignment = [];
+let currentPendingAdjustments = [];
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
@@ -86,6 +88,7 @@ let unsubscribeAvailableMaterial = null;
 let unsubscribeSummary = null;
 let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
+let unsubscribePendingAdjustments = null;
 
 // ---------- 登入 ----------
 
@@ -128,6 +131,7 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeSummary) { unsubscribeSummary(); unsubscribeSummary = null; }
   if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
+  if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
   currentRoles = [];
   currentStock = [];
   currentUsers = [];
@@ -136,6 +140,7 @@ onAuthStateChanged(auth, async user => {
   currentSummary = [];
   currentBatchList = [];
   currentConsignment = [];
+  currentPendingAdjustments = [];
   applyRoleVisibility(); // 立刻把畫面收回「沒有任何角色」狀態，避免短暫殘留上一個帳號看到的東西
 
   if (user) {
@@ -253,11 +258,17 @@ function applyRoleVisibility() {
       currentConsignment = rows;
       renderConsignmentTable();
     });
+    unsubscribePendingAdjustments = subscribeToPendingAdjustments(rows => {
+      currentPendingAdjustments = rows;
+      renderStockTable();
+    });
   } else if (!canSeeStock && unsubscribeBatchList) {
     unsubscribeBatchList(); unsubscribeBatchList = null;
     unsubscribeConsignment(); unsubscribeConsignment = null;
+    unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
     currentBatchList = [];
     currentConsignment = [];
+    currentPendingAdjustments = [];
   }
 }
 
@@ -289,7 +300,7 @@ function formatExpiry(raw) {
   return s;
 }
 
-function renderQtyCell(s) {
+function renderQtyCell(s, adjustment) {
   const badges = [];
   if (s.lockedQty) badges.push(`<span class="badge badge-locked" title="鎖庫前結存：${s.qtyBeforeLock ?? '-'}">鎖庫 ${s.lockedQty}</span>`);
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
@@ -298,7 +309,11 @@ function renderQtyCell(s) {
     const title = s.batches.map(b => `${formatExpiry(b.batchNo)}：${b.qty}`).join('\n');
     badges.push(`<span class="badge badge-batch" title="${escapeHTML(title)}">批號 ${s.batches.length} 筆</span>`);
   }
-  return `${s.qty}${badges.length ? ' ' + badges.join(' ') : ''}`;
+  const displayQty = s.qty + (adjustment || 0);
+  if (adjustment) {
+    badges.push(`<span class="badge badge-pending" title="銷貨/銷退/進貨/退貨/組合/異動/調撥裡還沒核完的部分">未核完 ${adjustment > 0 ? '+' : ''}${adjustment}</span>`);
+  }
+  return `${displayQty}${badges.length ? ' ' + badges.join(' ') : ''}`;
 }
 
 function renderStockTableHead() {
@@ -317,6 +332,13 @@ function renderStockTable() {
 
   // 純泰山倉管（沒有管理員身分）看不到「註記=隱藏」的品項，這是參照表帶過來的規則
   const applyTaishanHideRule = currentRoles.includes('泰山倉管') && !isAdmin;
+
+  // 品號+倉庫 -> 未核完調整加總，套用到顯示的庫存數字上
+  const adjustmentByKey = new Map();
+  currentPendingAdjustments.forEach(a => {
+    const key = `${a.itemCode}__${a.warehouse}`;
+    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
+  });
 
   // 依品號分組，把有權限看到的倉庫庫存併成同一列
   const byItem = new Map();
@@ -353,7 +375,8 @@ function renderStockTable() {
   stockTableBody.innerHTML = items.map(it => {
     const cells = visibleWarehouses.map(w => {
       const s = it.warehouses[w];
-      return `<td>${s ? renderQtyCell(s) : '-'}</td><td>${s ? formatExpiry(s.nearestExpiry) : '-'}</td>`;
+      const adjustment = s ? adjustmentByKey.get(`${s.itemCode}__${w}`) : 0;
+      return `<td>${s ? renderQtyCell(s, adjustment) : '-'}</td><td>${s ? formatExpiry(s.nearestExpiry) : '-'}</td>`;
     }).join('');
     return `
     <tr>
@@ -862,6 +885,138 @@ function parseSummarySheet(sheet) {
   return records;
 }
 
+// 這些「真正的資料列」判斷方式都一樣：品號欄位要是純英數字代碼。
+// 銷貨/銷退/進貨/退貨/組合/異動/調撥這些分頁裡，同一組欄位標題會在不同部門的區塊重複出現
+// （像「轉入台中」「轉入泰山」各自一組標題+資料），標題文字本身也會被當成儲存格值讀到，
+// 用「不是純英數字」把這些重複的標題列擋掉，只留下真正的品號。
+function isRealItemCode(code) {
+  return /^[A-Za-z0-9]+$/.test(code || '');
+}
+
+// 這些交易明細分頁裡的庫別欄位，寫法跟泰山/台中庫存表本身不一樣
+// （「泰山廠區」「台中庫」，不是單純「泰山」「台中」），要正規化成同一個名稱才能對得起來
+function normalizeWarehouse(raw) {
+  const s = (raw || '').toString();
+  if (s.includes('泰山')) return '泰山';
+  if (s.includes('台中')) return '台中';
+  return null;
+}
+
+// 泰山/台中庫存數字只反映「已核完」的單據；還沒核完的單據，資料還留在銷貨/銷退/進貨/退貨/組合/異動/調撥
+// 這些分頁裡（有資料代表還沒核完，核完之後那一列就會清空）。這裡把還沒核完的部分抓出來，
+// 換算成「品號 + 倉庫 → 該加或該扣多少」，套用到庫存數字上。方向是使用者親口確認的：
+// 銷貨(-)、銷退(+)、進貨(+)、退貨(-)、組合(成品+/元件-)、異動(看自己入庫/出庫欄)、調撥(轉入+/轉出-)。
+// 只處理庫別剛好是「泰山」或「台中」的列——異動等分頁的「庫別」有時其實是寄庫客戶的虛擬倉別，
+// 不是實體倉庫，這種先不處理。
+//
+// headerRowIndex 是 0-based：大部分這類分頁的真正欄位標題在實體第 2 列（headerRowIndex=1），
+// 因為第 1 列只是「轉入台中」這種標題文字；銷貨分頁例外，標題就在實體第 1 列（headerRowIndex=0）。
+function parsePendingAdjustments(wb) {
+  const records = [];
+
+  function sheetRows(sheetName) {
+    const sheet = wb.Sheets[sheetName];
+    if (!sheet) return null;
+    return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  }
+
+  function addFromRows(rows, headerRowIndex, codeCol, qtyCol, whCol, sign, source) {
+    if (!rows || codeCol === -1 || qtyCol === -1 || whCol === -1) return;
+    for (let i = headerRowIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const code = (row[codeCol] || '').toString().trim();
+      if (!isRealItemCode(code)) continue;
+      const warehouse = normalizeWarehouse(row[whCol]);
+      if (!warehouse) continue;
+      const qty = Number(row[qtyCol]) || 0;
+      if (!qty) continue;
+      records.push({ itemCode: code, warehouse, deltaQty: sign * qty, source });
+    }
+  }
+
+  // 銷貨：5 個地區分頁，欄位位置都一樣，有些地區目前是空的
+  ['銷貨-北區', '銷貨-中和', '銷貨-泰山', '銷貨-中區', '銷貨-他庫'].forEach(name => {
+    const rows = sheetRows(name);
+    if (!rows || !rows.length) return;
+    const header = rows[0];
+    addFromRows(rows, 0,
+      findColumnIndex(header, ['品    號', '品號']),
+      findColumnIndex(header, ['銷貨數量']),
+      findColumnIndex(header, ['庫別名稱']), -1, '銷貨');
+  });
+
+  {
+    const rows = sheetRows('銷退');
+    const header = rows && rows[1];
+    if (header) {
+      addFromRows(rows, 1, findColumnIndex(header, ['品號']),
+        findColumnIndex(header, ['銷退數量']), findColumnIndex(header, ['庫別名稱']), 1, '銷退');
+    }
+  }
+
+  {
+    const rows = sheetRows('進貨');
+    const header = rows && rows[1];
+    if (header) {
+      addFromRows(rows, 1, findColumnIndex(header, ['品    號', '品號']),
+        findColumnIndex(header, ['進貨數量']), findColumnIndex(header, ['庫別']), 1, '進貨');
+    }
+  }
+
+  {
+    const rows = sheetRows('進貨退回');
+    const header = rows && rows[1];
+    if (header) {
+      addFromRows(rows, 1, findColumnIndex(header, ['品號']),
+        findColumnIndex(header, ['數量']), findColumnIndex(header, ['庫別名稱']), -1, '退貨');
+    }
+  }
+
+  // 組合：成品入庫(+)跟元件出庫(-)是同一張單子的兩面，分開抓
+  {
+    const rows = sheetRows('組合');
+    const header = rows && rows[1];
+    if (header) {
+      addFromRows(rows, 1, findColumnIndex(header, ['成品品號']),
+        findColumnIndex(header, ['成品數量']), findColumnIndex(header, ['入庫庫別']), 1, '組合成品');
+      addFromRows(rows, 1, findColumnIndex(header, ['元件品號']),
+        findColumnIndex(header, ['元件用量']), findColumnIndex(header, ['出庫庫別']), -1, '組合元件');
+    }
+  }
+
+  // 異動：入庫(+)出庫(-)是同一列的兩個欄位，各自獨立判斷
+  {
+    const rows = sheetRows('異動');
+    const header = rows && rows[1];
+    if (header) {
+      const idxCode = findColumnIndex(header, ['品號']);
+      const idxWh = findColumnIndex(header, ['庫別']);
+      addFromRows(rows, 1, idxCode, findColumnIndex(header, ['入庫異動數量']), idxWh, 1, '異動入庫');
+      addFromRows(rows, 1, idxCode, findColumnIndex(header, ['出庫異動數量']), idxWh, -1, '異動出庫');
+    }
+  }
+
+  {
+    const rows = sheetRows('調撥-轉入');
+    const header = rows && rows[1];
+    if (header) {
+      addFromRows(rows, 1, findColumnIndex(header, ['品號']),
+        findColumnIndex(header, ['轉撥數量']), findColumnIndex(header, ['轉入庫別']), 1, '調撥轉入');
+    }
+  }
+
+  {
+    const rows = sheetRows('調撥-轉出');
+    const header = rows && rows[1];
+    if (header) {
+      addFromRows(rows, 1, findColumnIndex(header, ['品號']),
+        findColumnIndex(header, ['轉撥數量']), findColumnIndex(header, ['轉出庫別']), -1, '調撥轉出');
+    }
+  }
+
+  return records;
+}
+
 // 每一種資料各自獨立匯入：上傳檔案只是解析、不會馬上寫入，
 // 每一項自己按「確認匯入」才會真的動到資料庫，互不影響。
 const IMPORT_ITEMS = [
@@ -944,6 +1099,17 @@ const IMPORT_ITEMS = [
     run: async records => {
       const result = await replaceConsignment(records);
       return `已更新寄庫 ${result.written} 筆`;
+    }
+  },
+  {
+    key: 'pendingAdjustments',
+    label: '未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）',
+    detect: wb => ['銷貨-北區', '銷貨-中和', '銷貨-泰山', '銷貨-中區', '銷貨-他庫', '銷退', '進貨', '進貨退回', '組合', '異動', '調撥-轉入', '調撥-轉出'].some(n => !!wb.Sheets[n]),
+    prepare: wb => parsePendingAdjustments(wb),
+    describe: records => `共 ${records.length} 筆未核完調整（會加減到泰山/台中庫存數字上）`,
+    run: async records => {
+      const result = await replacePendingAdjustments(records);
+      return `已更新未核完調整 ${result.written} 筆`;
     }
   }
 ];
