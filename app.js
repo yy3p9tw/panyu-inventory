@@ -170,6 +170,7 @@ onAuthStateChanged(auth, async user => {
       stock => {
         currentStock = stock;
         renderStockTable();
+        renderAvailableMaterialTable();
       },
       err => {
         stockSummary.style.color = 'var(--color-danger)';
