@@ -309,10 +309,9 @@ function renderBatchCell(batches) {
   if (!batches || !batches.length) return '-';
   const sorted = [...batches].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''));
   const shortest = sorted[0];
-  const shortestText = `${shortest.batchNo}：${shortest.qty}`;
-  if (sorted.length === 1) return escapeHTML(shortestText);
-  const restText = sorted.slice(1).map(b => `${b.batchNo}：${b.qty}`).join('、');
-  return `${escapeHTML(shortestText)} <details style="display:inline-block;"><summary style="display:inline; cursor:pointer; color:var(--color-primary);">還有 ${sorted.length - 1} 筆</summary>${escapeHTML(restText)}</details>`;
+  if (sorted.length === 1) return escapeHTML(shortest.batchNo);
+  const restText = sorted.slice(1).map(b => b.batchNo).join('、');
+  return `${escapeHTML(shortest.batchNo)} <details style="display:inline-block;"><summary style="display:inline; cursor:pointer; color:var(--color-primary);">還有 ${sorted.length - 1} 筆</summary>${escapeHTML(restText)}</details>`;
 }
 
 function renderQtyCell(s, adjustment, batches) {
