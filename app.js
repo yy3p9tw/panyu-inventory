@@ -263,6 +263,7 @@ function applyRoleVisibility() {
     unsubscribePendingAdjustments = subscribeToPendingAdjustments(rows => {
       currentPendingAdjustments = rows;
       renderStockTable();
+      renderConsignmentTable();
     });
   } else if (!canSeeStock && unsubscribeBatchList) {
     unsubscribeBatchList(); unsubscribeBatchList = null;
@@ -548,13 +549,27 @@ function renderConsignmentTable() {
     return;
   }
 
-  consignmentTableBody.innerHTML = items.map(r => `
+  // 品號+客戶 -> 未核完調整加總（來自異動分頁，庫別欄位對不到泰山/台中時代表在動客戶的寄庫帳）
+  const adjustmentByKey = new Map();
+  currentPendingAdjustments.forEach(a => {
+    const key = `${a.itemCode}__${a.warehouse}`;
+    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
+  });
+
+  consignmentTableBody.innerHTML = items.map(r => {
+    const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
+    const displayQty = r.qty + adjustment;
+    const badge = adjustment
+      ? ` <span class="badge badge-pending" title="異動裡還沒核完的寄庫變動">未核完 ${adjustment > 0 ? '+' : ''}${adjustment}</span>`
+      : '';
+    return `
     <tr>
       <td>${escapeHTML(r.customer)}</td>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${r.qty}</td>
+      <td>${displayQty}${badge}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 consignmentSearchInput.addEventListener('input', renderConsignmentTable);
@@ -725,7 +740,9 @@ function parseBatchListSheet(sheet) {
 
 // 異動.xlsx / 轉撥.xlsx / 銷貨.xlsx：泰山/台中庫存數字只反映「已核完」的單據；
 // 還沒核完的單據，資料還留在這些分頁裡（核完之後那一列就會清空），有品號就代表還沒核完。
-// 只處理正規化後庫別剛好是「泰山」或「台中」的列——有些庫別其實是寄庫客戶的虛擬倉別，不是實體倉庫，先不處理。
+// 庫別欄位正規化得到「泰山」或「台中」就是調整實體倉庫庫存；正規化不到（值是客戶名字，例如
+// 「陳俊男-Y」「瓦城T」）就代表這筆其實是在動客戶的寄庫帳——用同一個 warehouse 欄位存客戶名字，
+// 畫面上寄庫那邊會照這個客戶名字對出來加減寄庫數量（跟泰山/台中庫存共用同一套「未核完調整」機制）。
 function parseMovementAdjustments(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   if (!rows.length) return [];
@@ -743,8 +760,9 @@ function parseMovementAdjustments(sheet) {
     const row = rows[i];
     const code = (row[idxCode] || '').toString().trim();
     if (!isRealItemCode(code)) continue;
-    const warehouse = normalizeWarehouse(row[idxWh]);
-    if (!warehouse) continue;
+    const whRaw = (row[idxWh] || '').toString().trim();
+    if (!whRaw) continue;
+    const warehouse = normalizeWarehouse(whRaw) || whRaw; // 對不到泰山/台中就當客戶名字（寄庫用）
     const inQty = idxIn !== -1 ? Number(row[idxIn]) || 0 : 0;
     const outQty = idxOut !== -1 ? Number(row[idxOut]) || 0 : 0;
     if (inQty) records.push({ itemCode: code, warehouse, deltaQty: inQty, source: '異動' });
