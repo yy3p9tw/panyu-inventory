@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=8';
+import { auth } from './firebase-config.js?v=9';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -15,8 +15,8 @@ import {
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=8';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=8';
+} from './inventory-service.js?v=9';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=9';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -29,10 +29,13 @@ const userNav = document.getElementById('userNav');
 const currentUserEmail = document.getElementById('currentUserEmail');
 const logoutBtn = document.getElementById('logoutBtn');
 
-const searchInput = document.getElementById('searchInput');
-const stockTableHead = document.getElementById('stockTableHead');
-const stockTableBody = document.getElementById('stockTableBody');
-const stockSummary = document.getElementById('stockSummary');
+const taishanSearchInput = document.getElementById('taishanSearchInput');
+const taishanTableBody = document.getElementById('taishanTableBody');
+const taishanSummary = document.getElementById('taishanSummary');
+
+const taichungSearchInput = document.getElementById('taichungSearchInput');
+const taichungTableBody = document.getElementById('taichungTableBody');
+const taichungSummary = document.getElementById('taichungSummary');
 
 const importDropZone = document.getElementById('importDropZone');
 const importFileInput = document.getElementById('importFileInput');
@@ -173,12 +176,15 @@ onAuthStateChanged(auth, async user => {
     unsubscribeStock = subscribeToStock(
       stock => {
         currentStock = stock;
-        renderStockTable();
+        renderTaishanTable();
+        renderTaichungTable();
         renderAvailableMaterialTable();
       },
       err => {
-        stockSummary.style.color = 'var(--color-danger)';
-        stockSummary.textContent = '讀取庫存資料失敗：' + err.message;
+        taishanSummary.style.color = 'var(--color-danger)';
+        taishanSummary.textContent = '讀取庫存資料失敗：' + err.message;
+        taichungSummary.style.color = 'var(--color-danger)';
+        taichungSummary.textContent = '讀取庫存資料失敗：' + err.message;
       }
     );
   } else {
@@ -199,7 +205,8 @@ function applyRoleVisibility() {
   canSeeFactory = currentRoles.includes('廠務') || isAdmin;
   canSeeSummary = currentRoles.includes('會計') || isAdmin;
 
-  const searchBtn = document.querySelector('.tab-btn[data-tab="search"]');
+  const taishanBtn = document.querySelector('.tab-btn[data-tab="taishan"]');
+  const taichungBtn = document.querySelector('.tab-btn[data-tab="taichung"]');
   const factoryBtn = document.querySelector('.tab-btn[data-tab="factory"]');
   const availableMaterialBtn = document.querySelector('.tab-btn[data-tab="availableMaterial"]');
   const referenceBtn = document.querySelector('.tab-btn[data-tab="reference"]');
@@ -211,7 +218,8 @@ function applyRoleVisibility() {
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
 
   const canSeeStock = visibleWarehouses.length > 0;
-  searchBtn.style.display = canSeeStock ? '' : 'none';
+  taishanBtn.style.display = visibleWarehouses.includes('泰山') ? '' : 'none';
+  taichungBtn.style.display = visibleWarehouses.includes('台中') ? '' : 'none';
   factoryBtn.style.display = canSeeFactory ? '' : 'none';
   availableMaterialBtn.style.display = canSeeFactory ? '' : 'none';
   referenceBtn.style.display = canSeeFactory ? '' : 'none';
@@ -229,8 +237,8 @@ function applyRoleVisibility() {
     if (firstVisible) firstVisible.click();
   }
 
-  renderStockTableHead();
-  renderStockTable();
+  renderTaishanTable();
+  renderTaichungTable();
 
   if (isAdmin && !unsubscribeUsers) {
     unsubscribeUsers = subscribeToUsers(users => {
@@ -288,7 +296,8 @@ function applyRoleVisibility() {
     unsubscribeBatchList = subscribeToBatchList(rows => {
       currentBatchList = rows;
       renderBatchTable();
-      renderStockTable();
+      renderTaishanTable();
+      renderTaichungTable();
       renderFactoryMaterialTable();
       renderAvailableMaterialTable();
     });
@@ -304,7 +313,8 @@ function applyRoleVisibility() {
     });
     unsubscribePendingAdjustments = subscribeToPendingAdjustments(rows => {
       currentPendingAdjustments = rows;
-      renderStockTable();
+      renderTaishanTable();
+      renderTaichungTable();
       renderConsignmentTable();
     });
   } else if (!canSeeStock && unsubscribeConsignment) {
@@ -373,88 +383,79 @@ function renderQtyCell(s, adjustment, batches) {
   return `${displayQty}${badges.length ? ' ' + badges.join(' ') : ''}`;
 }
 
-function renderStockTableHead() {
-  stockTableHead.innerHTML = `
-    <tr>
-      <th>品號</th>
-      <th>品名</th>
-      ${visibleWarehouses.map(w => `<th>${w}庫存</th><th>${w}最短效期</th>`).join('')}
-    </tr>
-  `;
-}
-
-function renderStockTable() {
-  if (visibleWarehouses.length === 0) return;
-  const keyword = searchInput.value.trim().toLowerCase();
+// 泰山跟台中各自獨立一個分頁（原本合併在同一張「品項查詢」表，欄位會隨看得到的倉庫動態增減，
+// 使用者覺得雜，改成跟批號/寄庫一樣各自獨立）。共用同一套渲染邏輯，只是各自對應到自己的倉庫、
+// 自己的搜尋框、自己的表格。
+function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
+  if (!visibleWarehouses.includes(warehouse)) return;
+  const keyword = searchInputEl.value.trim().toLowerCase();
 
   // 純泰山倉管（沒有管理員身分）看不到「註記=隱藏」的品項，這是參照表帶過來的規則
-  const applyTaishanHideRule = currentRoles.includes('泰山倉管') && !isAdmin;
+  const applyTaishanHideRule = warehouse === '泰山' && currentRoles.includes('泰山倉管') && !isAdmin;
 
-  // 品號+倉庫 -> 未核完調整加總，套用到顯示的庫存數字上
-  const adjustmentByKey = new Map();
+  // 品號 -> 未核完調整加總，套用到顯示的庫存數字上
+  const adjustmentByCode = new Map();
   currentPendingAdjustments.forEach(a => {
-    const key = `${a.itemCode}__${a.warehouse}`;
-    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
+    if (a.warehouse !== warehouse) return;
+    adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
   });
 
-  // 品號+倉庫 -> 批號清單，庫存數量本身跟批號現在是分開兩個檔案匯入的，畫面上即時對照
-  const batchesByKey = new Map();
+  // 品號 -> 批號清單，庫存數量本身跟批號現在是分開兩個檔案匯入的，畫面上即時對照
+  const batchesByCode = new Map();
   currentBatchList.forEach(b => {
-    const key = `${b.itemCode}__${b.warehouse}`;
-    if (!batchesByKey.has(key)) batchesByKey.set(key, []);
-    batchesByKey.get(key).push({ batchNo: b.batchNo, qty: b.qty });
+    if (b.warehouse !== warehouse) return;
+    if (!batchesByCode.has(b.itemCode)) batchesByCode.set(b.itemCode, []);
+    batchesByCode.get(b.itemCode).push({ batchNo: b.batchNo, qty: b.qty });
   });
 
-  // 依品號分組，把有權限看到的倉庫庫存併成同一列
-  const byItem = new Map();
-  currentStock.forEach(s => {
-    if (!visibleWarehouses.includes(s.warehouse)) return;
-    if (applyTaishanHideRule && s.warehouse === '泰山' && s.hiddenFromTaishanManager) return;
-    if (!byItem.has(s.itemCode)) {
-      byItem.set(s.itemCode, { itemCode: s.itemCode, itemName: s.itemName, warehouses: {} });
-    }
-    byItem.get(s.itemCode).warehouses[s.warehouse] = s;
+  let items = currentStock.filter(s => {
+    if (s.warehouse !== warehouse) return false;
+    if (applyTaishanHideRule && s.hiddenFromTaishanManager) return false;
+    return true;
   });
-
-  let items = Array.from(byItem.values());
   if (keyword) {
     items = items.filter(it =>
       (it.itemCode || '').toLowerCase().includes(keyword) ||
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items.sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
-  const colCount = 2 + visibleWarehouses.length * 2;
-
-  stockSummary.style.color = '';
-  stockSummary.textContent = byItem.size
-    ? (keyword ? `共 ${byItem.size} 個品項，篩選後 ${items.length} 筆` : `共 ${byItem.size} 個品項`)
+  const totalCount = currentStock.filter(s => s.warehouse === warehouse && !(applyTaishanHideRule && s.hiddenFromTaishanManager)).length;
+  summaryEl.style.color = '';
+  summaryEl.textContent = totalCount
+    ? (keyword ? `共 ${totalCount} 個品項，篩選後 ${items.length} 筆` : `共 ${totalCount} 個品項`)
     : '目前沒有庫存資料，請先到「匯入資料」上傳 ERP 檔案';
 
   if (items.length === 0) {
-    stockTableBody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
     return;
   }
 
-  stockTableBody.innerHTML = items.map(it => {
-    const cells = visibleWarehouses.map(w => {
-      const s = it.warehouses[w];
-      const adjustment = s ? adjustmentByKey.get(`${s.itemCode}__${w}`) : 0;
-      const batches = s ? batchesByKey.get(`${s.itemCode}__${w}`) : null;
-      return `<td>${s ? renderQtyCell(s, adjustment, batches) : '-'}</td><td>${s ? formatExpiry(s.nearestExpiry) : '-'}</td>`;
-    }).join('');
+  tableBody.innerHTML = items.map(s => {
+    const adjustment = adjustmentByCode.get(s.itemCode);
+    const batches = batchesByCode.get(s.itemCode);
     return `
     <tr>
-      <td>${escapeHTML(it.itemCode)}</td>
-      <td>${escapeHTML(it.itemName)}</td>
-      ${cells}
+      <td>${escapeHTML(s.itemCode)}</td>
+      <td>${escapeHTML(s.itemName)}</td>
+      <td>${renderQtyCell(s, adjustment, batches)}</td>
+      <td>${formatExpiry(s.nearestExpiry)}</td>
     </tr>
   `;
   }).join('');
 }
 
-searchInput.addEventListener('input', renderStockTable);
+function renderTaishanTable() {
+  renderWarehouseTable('泰山', taishanTableBody, taishanSearchInput, taishanSummary);
+}
+
+function renderTaichungTable() {
+  renderWarehouseTable('台中', taichungTableBody, taichungSearchInput, taichungSummary);
+}
+
+taishanSearchInput.addEventListener('input', renderTaishanTable);
+taichungSearchInput.addEventListener('input', renderTaichungTable);
 
 // ---------- 廠務物料 ----------
 

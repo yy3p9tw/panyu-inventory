@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <header class="site-header">
@@ -32,7 +32,8 @@
     <div id="appContent" style="display:none;">
 
       <div class="tab-row" id="tabRow">
-        <button type="button" class="tab-btn active" data-tab="search">品項查詢</button>
+        <button type="button" class="tab-btn active" data-tab="taishan">泰山</button>
+        <button type="button" class="tab-btn" data-tab="taichung">台中</button>
         <button type="button" class="tab-btn" data-tab="factory">廠務物料</button>
         <button type="button" class="tab-btn" data-tab="availableMaterial">可用原料(泰山)</button>
         <button type="button" class="tab-btn" data-tab="reference">參照</button>
@@ -44,15 +45,33 @@
         <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
       </div>
 
-      <!-- 品項查詢 -->
-      <section id="tabSearch" class="tab-panel">
+      <!-- 泰山 -->
+      <section id="tabTaishan" class="tab-panel">
         <div class="panel">
-          <input type="text" id="searchInput" placeholder="搜尋品號或品名..." />
-          <p class="hint-text" id="stockSummary"></p>
+          <input type="text" id="taishanSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="taishanSummary"></p>
           <div class="table-scroll">
             <table class="data-table">
-              <thead id="stockTableHead"></thead>
-              <tbody id="stockTableBody"></tbody>
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>庫存</th><th>最短效期</th></tr>
+              </thead>
+              <tbody id="taishanTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 台中 -->
+      <section id="tabTaichung" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <input type="text" id="taichungSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="taichungSummary"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>庫存</th><th>最短效期</th></tr>
+              </thead>
+              <tbody id="taichungTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -221,6 +240,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=8"></script>
+  <script type="module" src="app.js?v=9"></script>
 </body>
 </html>
