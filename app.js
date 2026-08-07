@@ -13,7 +13,8 @@ import {
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
-  subscribeToPendingAdjustments, replacePendingAdjustments
+  subscribeToPendingAdjustments, replacePendingAdjustments,
+  subscribeToRawImport, replaceRawImport
 } from './inventory-service.js?v=1';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=1';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
@@ -55,6 +56,10 @@ const consignmentSearchInput = document.getElementById('consignmentSearchInput')
 const consignmentTableBody = document.getElementById('consignmentTableBody');
 const consignmentCount = document.getElementById('consignmentCount');
 
+const rawSheetSelect = document.getElementById('rawSheetSelect');
+const rawTableBody = document.getElementById('rawTableBody');
+const rawCount = document.getElementById('rawCount');
+
 const WAREHOUSES = ['泰山', '台中'];
 const ROLES = ['泰山倉管', '台中倉管', '廠務', '會計', '管理員'];
 
@@ -80,6 +85,7 @@ let currentSummary = [];
 let currentBatchList = [];
 let currentConsignment = [];
 let currentPendingAdjustments = [];
+let currentRawImport = [];
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
@@ -89,6 +95,7 @@ let unsubscribeSummary = null;
 let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
 let unsubscribePendingAdjustments = null;
+let unsubscribeRawImport = null;
 
 // ---------- 登入 ----------
 
@@ -132,12 +139,14 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
   if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
+  if (unsubscribeRawImport) { unsubscribeRawImport(); unsubscribeRawImport = null; }
   currentRoles = [];
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
   currentAvailableMaterial = [];
   currentSummary = [];
+  currentRawImport = [];
   currentBatchList = [];
   currentConsignment = [];
   currentPendingAdjustments = [];
@@ -190,6 +199,7 @@ function applyRoleVisibility() {
   const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
   const batchBtn = document.querySelector('.tab-btn[data-tab="batch"]');
   const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
+  const rawBtn = document.querySelector('.tab-btn[data-tab="raw"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
 
@@ -199,7 +209,8 @@ function applyRoleVisibility() {
   summaryBtn.style.display = canSeeSummary ? '' : 'none';
   batchBtn.style.display = canSeeStock ? '' : 'none';
   consignmentBtn.style.display = canSeeStock ? '' : 'none';
-  importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary) ? '' : 'none';
+  rawBtn.style.display = isAdmin ? '' : 'none';
+  importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary || isAdmin) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
 
   // 如果目前開著的分頁被隱藏了，自動切到第一個看得到的分頁
@@ -220,6 +231,18 @@ function applyRoleVisibility() {
   } else if (!isAdmin && unsubscribeUsers) {
     unsubscribeUsers();
     unsubscribeUsers = null;
+  }
+
+  if (isAdmin && !unsubscribeRawImport) {
+    unsubscribeRawImport = subscribeToRawImport(rows => {
+      currentRawImport = rows;
+      renderRawSheetOptions();
+      renderRawTable();
+    });
+  } else if (!isAdmin && unsubscribeRawImport) {
+    unsubscribeRawImport();
+    unsubscribeRawImport = null;
+    currentRawImport = [];
   }
 
   if (canSeeFactory && !unsubscribeFactoryMaterial) {
@@ -585,6 +608,60 @@ function renderConsignmentTable() {
 
 consignmentSearchInput.addEventListener('input', renderConsignmentTable);
 
+// ---------- 原始資料（整份組合檔一比一塞進來的，不解讀欄位意義，管理員專用） ----------
+
+function colLetter(index) {
+  let n = index + 1;
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function renderRawSheetOptions() {
+  const sheets = new Map(); // sheet name -> sheetOrder
+  currentRawImport.forEach(r => {
+    if (!sheets.has(r.sheet)) sheets.set(r.sheet, r.sheetOrder ?? 0);
+  });
+  const names = Array.from(sheets.keys()).sort((a, b) => sheets.get(a) - sheets.get(b));
+  const current = rawSheetSelect.value;
+  rawSheetSelect.innerHTML = names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
+  if (names.includes(current)) rawSheetSelect.value = current;
+}
+
+function renderRawTable() {
+  if (!currentRawImport.length) {
+    rawCount.textContent = '目前沒有原始資料，請先到「匯入資料」上傳整份組合檔';
+    rawTableBody.innerHTML = '';
+    return;
+  }
+  const sheetName = rawSheetSelect.value;
+  const rows = currentRawImport
+    .filter(r => r.sheet === sheetName)
+    .sort((a, b) => a.rowIndex - b.rowIndex);
+
+  rawCount.textContent = `「${sheetName}」共 ${rows.length} 列`;
+
+  if (!rows.length) {
+    rawTableBody.innerHTML = `<tr><td style="text-align:center; color:#6b7280;">這個分頁沒有資料</td></tr>`;
+    return;
+  }
+
+  const maxCols = Math.max(...rows.map(r => (r.cells || []).length));
+  const headerRow = `<tr><th>#</th>${Array.from({ length: maxCols }, (_, i) => `<th>${colLetter(i)}</th>`).join('')}</tr>`;
+  const bodyRows = rows.map(r => {
+    const cells = r.cells || [];
+    const tds = Array.from({ length: maxCols }, (_, i) => `<td>${escapeHTML(cells[i] ?? '')}</td>`).join('');
+    return `<tr><td>${r.rowIndex + 1}</td>${tds}</tr>`;
+  }).join('');
+  rawTableBody.innerHTML = headerRow + bodyRows;
+}
+
+rawSheetSelect.addEventListener('change', renderRawTable);
+
 // ---------- 使用者管理 ----------
 
 function renderUsersTable() {
@@ -837,9 +914,44 @@ function parseSalesAdjustments(sheet) {
   return records;
 }
 
-// 目前只有這 6 種確認過真實 ERP 匯出格式（進貨/退貨/組合/鎖庫/廠務用料/可用原料/彙總還沒有真實檔案樣本，
-// 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
+// 整份組合檔（1150805庫存YU.xlsx 這種）原封不動塞進來：不管欄位意義、不篩選，
+// 每個分頁的每一列都存成一筆資料，之後在「原始資料」分頁一起慢慢看、慢慢決定要留什麼。
+function parseWholeWorkbookRaw(wb) {
+  const records = [];
+  wb.SheetNames.forEach((sheetName, sheetOrder) => {
+    const sheet = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    rows.forEach((row, rowIndex) => {
+      const hasContent = row.some(cell => cell !== '' && cell !== null && cell !== undefined);
+      if (!hasContent) return;
+      records.push({
+        sheet: sheetName,
+        sheetOrder,
+        rowIndex,
+        cells: row.map(c => (c === null || c === undefined) ? '' : c)
+      });
+    });
+  });
+  return records;
+}
+
+// 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫/廠務用料/可用原料/彙總
+// 還沒有真實檔案樣本，拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
 const IMPORT_ITEMS = [
+  {
+    key: 'rawAll',
+    label: '整份組合檔（原始匯入，不篩選）',
+    matchesFilename: name => name.includes('庫存YU'),
+    prepare: wb => parseWholeWorkbookRaw(wb),
+    describe: records => {
+      const sheetCount = new Set(records.map(r => r.sheet)).size;
+      return `${sheetCount} 個分頁，共 ${records.length} 列（每個分頁每一列都會存，不篩選欄位）`;
+    },
+    run: async records => {
+      const result = await replaceRawImport(records);
+      return `已更新原始資料 ${result.written} 筆，到「原始資料」分頁可以選分頁瀏覽`;
+    }
+  },
   {
     key: 'stock',
     label: '庫存',
