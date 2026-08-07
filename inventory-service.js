@@ -194,16 +194,15 @@ export function subscribeToConsignment(callback, onError) {
   return subscribeToCollection('consignment', callback, onError);
 }
 
-// records: [{ customer, itemName, warehouse, qty, consignmentDate }]
+// records: [{ itemCode, itemName, customer, qty }]
 export async function replaceConsignment(records) {
   const docs = records.map((r, i) => ({
-    id: `${sanitizeIdPart(r.customer)}__${sanitizeIdPart(r.itemName)}__${r.warehouse}__${i}`,
+    id: `${sanitizeIdPart(r.itemCode)}__${sanitizeIdPart(r.customer)}__${i}`,
     data: {
-      customer: r.customer,
+      itemCode: r.itemCode,
       itemName: r.itemName,
-      warehouse: r.warehouse,
+      customer: r.customer,
       qty: r.qty || 0,
-      consignmentDate: r.consignmentDate || '',
       updatedAt: Date.now()
     }
   }));
