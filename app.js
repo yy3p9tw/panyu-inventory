@@ -303,6 +303,18 @@ function formatExpiry(raw) {
   return s;
 }
 
+// 批號是 YYYYMMDD，字串排序就是時間排序。只顯示最短（最早到期）那個批號，
+// 同品項其他批號收在「還有 N 筆」點開才看得到，不要一次全部列出來。
+function renderBatchCell(batches) {
+  if (!batches || !batches.length) return '-';
+  const sorted = [...batches].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''));
+  const shortest = sorted[0];
+  const shortestText = `${shortest.batchNo}：${shortest.qty}`;
+  if (sorted.length === 1) return escapeHTML(shortestText);
+  const restText = sorted.slice(1).map(b => `${b.batchNo}：${b.qty}`).join('、');
+  return `${escapeHTML(shortestText)} <details style="display:inline-block;"><summary style="display:inline; cursor:pointer; color:var(--color-primary);">還有 ${sorted.length - 1} 筆</summary>${escapeHTML(restText)}</details>`;
+}
+
 function renderQtyCell(s, adjustment, batches) {
   const badges = [];
   if (s.lockedQty) badges.push(`<span class="badge badge-locked" title="鎖庫前結存：${s.qtyBeforeLock ?? '-'}">鎖庫 ${s.lockedQty}</span>`);
@@ -419,15 +431,12 @@ function renderFactoryMaterialTable() {
 
   const sorted = [...currentFactoryMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
-    const batches = batchesByCode.get(r.itemCode);
-    const batchText = batches && batches.length
-      ? batches.map(b => `${b.batchNo}：${b.qty}`).join('、')
-      : '-';
+    const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${escapeHTML(batchText)}</td>
+      <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
   }).join('');
