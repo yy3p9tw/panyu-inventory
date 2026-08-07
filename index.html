@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
   <header class="site-header">
@@ -94,19 +94,13 @@
       <section id="tabReference" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>參照</h2>
-          <p class="hint-text">品項主檔，ERP 沒有這份資料，人工維護。可以從組合檔（1150805庫存YU.xlsx 這種）的「參照(新)」分頁匯入當初始值（不會覆蓋已經手動改過的品項）。平常是唯讀顯示，按「編輯」才能改，改完自動存檔。</p>
-          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <input type="text" id="referenceSearchInput" placeholder="搜尋品號或品名..." style="flex:1; min-width:200px;" />
-            <button type="button" id="referenceEditToggleBtn" class="secondary">編輯</button>
-          </div>
+          <p class="hint-text">品項主檔，ERP 沒有這份資料，人工維護。可以從組合檔（1150805庫存YU.xlsx 這種）的「參照(新)」分頁匯入當初始值（不會覆蓋已經手動改過的品項）。點一列展開其他欄位編輯，改完自動存檔。</p>
+          <input type="text" id="referenceSearchInput" placeholder="搜尋品號或品名..." />
           <p class="hint-text" id="referenceCount"></p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
-                <tr>
-                  <th>品號</th><th>品名</th><th>產地</th><th>單位</th><th>採購</th><th>類別</th><th>大類</th>
-                  <th>淨重</th><th>毛重</th><th>公司別</th><th>標記(廠務)</th><th>散裝</th><th>註記</th>
-                </tr>
+                <tr><th>品號</th><th>品名</th><th>標記(廠務)</th></tr>
               </thead>
               <tbody id="referenceTableBody"></tbody>
             </table>
@@ -227,6 +221,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=7"></script>
+  <script type="module" src="app.js?v=8"></script>
 </body>
 </html>
