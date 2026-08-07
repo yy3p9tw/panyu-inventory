@@ -473,7 +473,7 @@ function renderFactoryMaterialTable() {
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${formatExpiry(nearestExpiry)}</td>
+      <td>${nearestExpiry ? escapeHTML(nearestExpiry) : '-'}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
