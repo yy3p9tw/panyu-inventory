@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=3';
+import { db } from './firebase-config.js?v=4';
 import {
   collection,
   onSnapshot,
@@ -154,6 +154,24 @@ export function subscribeToItemTags(callback, onError) {
 export async function setItemTag(itemCode, tag) {
   const ref = doc(db, 'itemTags', sanitizeIdPart(itemCode));
   await setDoc(ref, { itemCode, tag, updatedAt: Date.now() }, { merge: true });
+}
+
+// 組合檔「參照(新)」分頁的「廠務」欄位可以拿來當標記的初始值：只 set/merge，不刪除，
+// 這樣才不會把使用者之後手動改過的其他品項標記洗掉（跟其他 collection 的整批覆蓋不一樣）。
+// records: [{ itemCode, tag }]
+export async function importItemTagsFromReference(records) {
+  const chunks = [];
+  const remaining = [...records];
+  while (remaining.length) chunks.push(remaining.splice(0, 450));
+  for (const chunk of chunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(r => {
+      const ref = doc(db, 'itemTags', sanitizeIdPart(r.itemCode));
+      batch.set(ref, { itemCode: r.itemCode, tag: r.tag, updatedAt: Date.now() }, { merge: true });
+    });
+    await batch.commit();
+  }
+  return { written: records.length };
 }
 
 // ---------- 批號：每次匯入完全覆蓋 ----------

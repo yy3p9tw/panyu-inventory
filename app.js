@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=3';
+import { auth } from './firebase-config.js?v=4';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -9,14 +9,14 @@ import {
 import {
   subscribeToStock, replaceStockForWarehouses,
   subscribeToFactoryMaterial, replaceFactoryMaterial,
-  subscribeToItemTags, setItemTag,
+  subscribeToItemTags, setItemTag, importItemTagsFromReference,
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=3';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=3';
+} from './inventory-service.js?v=4';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=4';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -978,6 +978,33 @@ function parseWholeWorkbookRaw(wb) {
   return records;
 }
 
+// 組合檔（1150805庫存YU.xlsx）的「參照 (新)」分頁的「廠務」欄位可以拿來當「可用原料(泰山)」
+// 標記欄位的初始值——這個欄位本身是人工維護的品項主檔，不是每天變動的 ERP 資料，所以偶爾匯入一次，
+// 之後有需要再到「可用原料(泰山)」分頁手動改。只 set/merge、不整批覆蓋，不會洗掉手動改過的其他品項。
+function parseItemTagsFromReference(wb) {
+  const sheet = wb.Sheets['參照 (新)'];
+  if (!sheet) throw new Error('這份檔案裡找不到「參照 (新)」分頁');
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+  const idxCode = findColumnIndex(header, ['品號']);
+  const idxTag = findColumnIndex(header, ['廠務']);
+  if (idxCode === -1 || idxTag === -1) {
+    throw new Error('「參照 (新)」分頁找不到「品號」或「廠務」欄位，格式可能跟預期不同');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const itemCode = (row[idxCode] || '').toString().trim();
+    if (!isRealItemCode(itemCode)) continue;
+    const tag = (row[idxTag] || '').toString().trim();
+    if (!tag) continue;
+    records.push({ itemCode, tag });
+  }
+  return records;
+}
+
 // 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫還沒有真實檔案樣本，
 // 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
 // 同一個檔名可能對到不只一個項目，所以是列出所有符合的候選，不是只挑第一個。
@@ -994,6 +1021,17 @@ const IMPORT_ITEMS = [
     run: async records => {
       const result = await replaceRawImport(records);
       return `已更新原始資料 ${result.written} 筆，到「原始資料」分頁可以選分頁瀏覽`;
+    }
+  },
+  {
+    key: 'itemTagsFromReference',
+    label: '可用原料(泰山)標記（參照(新)分頁，當初始值，不覆蓋手動改過的）',
+    matchesFilename: name => name.includes('庫存YU'),
+    prepare: wb => parseItemTagsFromReference(wb),
+    describe: records => `共 ${records.length} 筆有標記的品項`,
+    run: async records => {
+      const result = await importItemTagsFromReference(records);
+      return `已更新標記 ${result.written} 筆`;
     }
   },
   {
