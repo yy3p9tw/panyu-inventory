@@ -450,11 +450,12 @@ searchInput.addEventListener('input', renderStockTable);
 // ---------- 廠務物料 ----------
 
 // 廠務用料：品名/數量是庫存.xlsx 裡庫別=廠務的部分（匯入時存進 factoryMaterial），
-// 批號、最短效期是畫面上跟批號.xlsx 的「廠務」庫別即時對出來的，不是匯入時就算好存起來的
-// （每個資料類型都對應各自一份 ERP 匯出檔，不靠組合檔的公式）。
+// 最短效期＝批號本身（最早的那個），畫面上跟批號.xlsx 的「廠務」庫別即時對出來，不是匯入時算好存起來的
+// （每個資料類型都對應各自一份 ERP 匯出檔，不靠組合檔的公式）。renderBatchCell 只顯示最短那個，
+// 同品項其他批號收在「還有 N 筆」點開才看得到。
 function renderFactoryMaterialTable() {
   if (!currentFactoryMaterial.length) {
-    factoryMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
   }
   const batchesByCode = new Map();
@@ -467,14 +468,10 @@ function renderFactoryMaterialTable() {
   const sorted = [...currentFactoryMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
-    const nearestExpiry = batches.length
-      ? [...batches].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''))[0].batchNo
-      : '';
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${nearestExpiry ? escapeHTML(nearestExpiry) : '-'}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
