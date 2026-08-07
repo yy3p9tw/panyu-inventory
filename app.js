@@ -446,10 +446,10 @@ function renderFactoryMaterialTable() {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
   }
-  // 廠務的料實際上是泰山庫存撥用的，批號在畫面上跟批號分頁（泰山）即時對照，不是匯入時就存好的
+  // 批號.xlsx 自己就有獨立的「廠務」庫別資料，批號在畫面上跟批號分頁（廠務）即時對照，不是匯入時就存好的
   const batchesByCode = new Map();
   currentBatchList.forEach(b => {
-    if (b.warehouse !== '泰山') return;
+    if (b.warehouse !== '廠務') return;
     if (!batchesByCode.has(b.itemCode)) batchesByCode.set(b.itemCode, []);
     batchesByCode.get(b.itemCode).push(b);
   });
@@ -814,7 +814,9 @@ function parseBatchListSheet(sheet) {
     const row = rows[i];
     const itemCode = (row[idxCode] || '').toString().trim();
     if (!isRealItemCode(itemCode)) continue;
-    const warehouse = normalizeWarehouse(row[idxWh]);
+    const whRaw = (row[idxWh] || '').toString().trim();
+    // 批號.xlsx 自己就有獨立的「廠務」庫別資料，不是要去對泰山廠區——廠務有自己的批號，不用正規化成泰山/台中
+    const warehouse = normalizeWarehouse(whRaw) || (whRaw === '廠務' ? '廠務' : null);
     if (!warehouse) continue;
     records.push({
       itemCode,
