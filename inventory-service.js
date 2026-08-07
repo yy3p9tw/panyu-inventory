@@ -145,25 +145,24 @@ export async function replaceFactoryMaterial(records) {
   return replaceWholeCollection('factoryMaterial', docs);
 }
 
-export function subscribeToAvailableMaterial(callback, onError) {
-  return subscribeToCollection('availableMaterial', callback, onError);
+// 可用原料(泰山) 不再是自己匯入的一份資料——它其實就是泰山的庫存+批號，
+// 畫面上即時組出來，只差一個「標記」欄位，來源是下面這個 itemReference（參照表）。
+
+export function subscribeToItemReference(callback, onError) {
+  return subscribeToCollection('itemReference', callback, onError);
 }
 
-// records: [{ itemCode, itemName, qty, batchNo, expired, tag }]
-export async function replaceAvailableMaterial(records) {
+// records: [{ itemCode, tag }]
+export async function replaceItemReference(records) {
   const docs = records.map(r => ({
-    id: `${sanitizeIdPart(r.itemCode)}__${sanitizeIdPart(r.batchNo) || 'nobatch'}`,
+    id: sanitizeIdPart(r.itemCode),
     data: {
       itemCode: r.itemCode,
-      itemName: r.itemName,
-      qty: r.qty || 0,
-      batchNo: r.batchNo || '',
-      expired: r.expired || '',
       tag: r.tag || '',
       updatedAt: Date.now()
     }
   }));
-  return replaceWholeCollection('availableMaterial', docs);
+  return replaceWholeCollection('itemReference', docs);
 }
 
 // ---------- 批號：每次匯入完全覆蓋 ----------

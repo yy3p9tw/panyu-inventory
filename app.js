@@ -9,7 +9,7 @@ import {
 import {
   subscribeToStock, replaceStockForWarehouses,
   subscribeToFactoryMaterial, replaceFactoryMaterial,
-  subscribeToAvailableMaterial, replaceAvailableMaterial,
+  subscribeToItemReference, replaceItemReference,
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
@@ -80,7 +80,7 @@ let canSeeSummary = false;
 let currentStock = [];
 let currentUsers = [];
 let currentFactoryMaterial = [];
-let currentAvailableMaterial = [];
+let currentItemReference = [];
 let currentSummary = [];
 let currentBatchList = [];
 let currentConsignment = [];
@@ -90,7 +90,7 @@ let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
 let unsubscribeFactoryMaterial = null;
-let unsubscribeAvailableMaterial = null;
+let unsubscribeItemReference = null;
 let unsubscribeSummary = null;
 let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
@@ -134,7 +134,7 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeStock) { unsubscribeStock(); unsubscribeStock = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
   if (unsubscribeFactoryMaterial) { unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null; }
-  if (unsubscribeAvailableMaterial) { unsubscribeAvailableMaterial(); unsubscribeAvailableMaterial = null; }
+  if (unsubscribeItemReference) { unsubscribeItemReference(); unsubscribeItemReference = null; }
   if (unsubscribeSummary) { unsubscribeSummary(); unsubscribeSummary = null; }
   if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
@@ -144,7 +144,7 @@ onAuthStateChanged(auth, async user => {
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
-  currentAvailableMaterial = [];
+  currentItemReference = [];
   currentSummary = [];
   currentRawImport = [];
   currentBatchList = [];
@@ -170,6 +170,7 @@ onAuthStateChanged(auth, async user => {
       stock => {
         currentStock = stock;
         renderStockTable();
+        renderAvailableMaterialTable();
       },
       err => {
         stockSummary.style.color = 'var(--color-danger)';
@@ -250,15 +251,15 @@ function applyRoleVisibility() {
       currentFactoryMaterial = rows;
       renderFactoryMaterialTable();
     });
-    unsubscribeAvailableMaterial = subscribeToAvailableMaterial(rows => {
-      currentAvailableMaterial = rows;
+    unsubscribeItemReference = subscribeToItemReference(rows => {
+      currentItemReference = rows;
       renderAvailableMaterialTable();
     });
   } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
     unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
-    unsubscribeAvailableMaterial(); unsubscribeAvailableMaterial = null;
+    unsubscribeItemReference(); unsubscribeItemReference = null;
     currentFactoryMaterial = [];
-    currentAvailableMaterial = [];
+    currentItemReference = [];
   }
 
   if (canSeeSummary && !unsubscribeSummary) {
@@ -278,6 +279,7 @@ function applyRoleVisibility() {
       renderBatchTable();
       renderStockTable();
       renderFactoryMaterialTable();
+      renderAvailableMaterialTable();
     });
     unsubscribeConsignment = subscribeToConsignment(rows => {
       currentConsignment = rows;
@@ -467,21 +469,36 @@ function renderFactoryMaterialTable() {
   }).join('');
 }
 
+// 可用原料(泰山) = 泰山的庫存(庫存.xlsx) + 泰山的批號(批號.xlsx) + 標記(參照表)，畫面上即時組出來，
+// 不是自己單獨一份匯入資料。過期/報廢欄位目前沒有真實資料來源，先不顯示。
 function renderAvailableMaterialTable() {
-  if (!currentAvailableMaterial.length) {
-    availableMaterialTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">目前沒有資料（這個功能還在等一份真實 ERP 匯出的可用原料檔確認格式）</td></tr>`;
+  const taishanStock = currentStock.filter(s => s.warehouse === '泰山');
+  if (!taishanStock.length) {
+    availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料，請先到「匯入資料」上傳庫存.xlsx</td></tr>`;
     return;
   }
-  const sorted = [...currentAvailableMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
-  availableMaterialTableBody.innerHTML = sorted.map(r => `
+
+  const batchesByCode = new Map();
+  currentBatchList.forEach(b => {
+    if (b.warehouse !== '泰山') return;
+    if (!batchesByCode.has(b.itemCode)) batchesByCode.set(b.itemCode, []);
+    batchesByCode.get(b.itemCode).push(b);
+  });
+  const tagByCode = new Map(currentItemReference.map(r => [r.itemCode, r.tag]));
+
+  const sorted = [...taishanStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  availableMaterialTableBody.innerHTML = sorted.map(r => {
+    const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
+    const tag = tagByCode.get(r.itemCode) || '';
+    return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${r.batchNo || '-'}</td>
-      <td>${escapeHTML(r.expired)}</td>
-      <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
+      <td>${renderBatchCell(batches)}</td>
+      <td>${tag ? escapeHTML(tag) : ''}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ---------- 彙總 ----------
@@ -937,8 +954,37 @@ function parseWholeWorkbookRaw(wb) {
   return records;
 }
 
-// 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫/廠務用料/可用原料/彙總
+// 參照(新)：品項主檔，目前只需要「廠務」欄位當標記（原料/成品/半成品/保測/測試），
+// 資料來源是整份組合檔（1150805庫存YU.xlsx），不是單獨的 ERP 匯出檔——這張表比較像人工維護的主檔，
+// 不是每天變動的交易資料，所以直接從組合檔拿是合理的。
+function parseReferenceSheet(wb) {
+  const sheet = wb.Sheets['參照 (新)'];
+  if (!sheet) throw new Error('這份檔案裡找不到「參照 (新)」分頁');
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+  const idxCode = findColumnIndex(header, ['品號']);
+  const idxTag = findColumnIndex(header, ['廠務']);
+  if (idxCode === -1 || idxTag === -1) {
+    throw new Error('「參照 (新)」分頁找不到「品號」或「廠務」欄位，格式可能跟預期不同');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const itemCode = (row[idxCode] || '').toString().trim();
+    if (!isRealItemCode(itemCode)) continue;
+    const tag = (row[idxTag] || '').toString().trim();
+    if (!tag) continue;
+    records.push({ itemCode, tag });
+  }
+  return records;
+}
+
+// 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫/廠務用料/彙總
 // 還沒有真實檔案樣本，拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
+// 同一個檔名可能對到不只一個項目（例如組合檔同時可以做「整份原始匯入」跟「參照標記」），
+// 所以是列出所有符合的候選，不是只挑第一個。
 const IMPORT_ITEMS = [
   {
     key: 'rawAll',
@@ -952,6 +998,17 @@ const IMPORT_ITEMS = [
     run: async records => {
       const result = await replaceRawImport(records);
       return `已更新原始資料 ${result.written} 筆，到「原始資料」分頁可以選分頁瀏覽`;
+    }
+  },
+  {
+    key: 'reference',
+    label: '參照標記（可用原料的標記欄位）',
+    matchesFilename: name => name.includes('庫存YU'),
+    prepare: wb => parseReferenceSheet(wb),
+    describe: records => `共 ${records.length} 筆有標記的品項`,
+    run: async records => {
+      const result = await replaceItemReference(records);
+      return `已更新參照標記 ${result.written} 筆`;
     }
   },
   {
@@ -1023,67 +1080,78 @@ const IMPORT_ITEMS = [
   }
 ];
 
-let pendingImportItem = null;
-let pendingImportData = null;
+let pendingWorkbook = null;
+let pendingImportData = {}; // key -> prepared data
 
 async function handleFileSelected(file) {
   importMsg.style.color = 'var(--color-text-muted)';
   importMsg.textContent = '讀取檔案中...';
   importItemsList.innerHTML = '';
-  pendingImportItem = null;
-  pendingImportData = null;
+  pendingWorkbook = null;
+  pendingImportData = {};
 
   const filenameNoExt = file.name.replace(/\.[^.]+$/, '').trim();
-  const matched = IMPORT_ITEMS.find(item => item.matchesFilename(filenameNoExt));
+  const matched = IMPORT_ITEMS.filter(item => item.matchesFilename(filenameNoExt));
 
-  if (!matched) {
+  if (!matched.length) {
     importMsg.style.color = 'var(--color-danger)';
-    importMsg.textContent = `看不懂檔名「${file.name}」，目前支援的檔名：庫存、寄庫、批號、異動、轉撥、銷貨（副檔名 .xlsx）`;
+    importMsg.textContent = `看不懂檔名「${file.name}」，目前支援的檔名：庫存、寄庫、批號、異動、轉撥、銷貨，或含「庫存YU」的整份組合檔（副檔名 .xlsx）`;
     return;
   }
 
   try {
     const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: 'array' });
-    pendingImportItem = matched;
-    pendingImportData = matched.prepare(wb);
-    renderImportItem();
+    pendingWorkbook = XLSX.read(buffer, { type: 'array' });
+    renderImportItems(matched);
     importMsg.style.color = '';
-    importMsg.textContent = '檔案讀取完成：';
+    importMsg.textContent = '檔案讀取完成，選擇要匯入的項目：';
   } catch (err) {
     importMsg.style.color = 'var(--color-danger)';
-    importMsg.textContent = `「${matched.label}」讀取失敗：` + err.message;
+    importMsg.textContent = '讀取檔案失敗：' + err.message;
   }
 }
 
-function renderImportItem() {
-  if (!pendingImportItem) return;
-  const desc = pendingImportItem.describe(pendingImportData);
-  importItemsList.innerHTML = `
-    <div class="import-item">
-      <div class="import-item-info">
-        <strong>${escapeHTML(pendingImportItem.label)}</strong>
-        <span class="hint-text">${escapeHTML(desc)}</span>
+function renderImportItems(matched) {
+  importItemsList.innerHTML = matched.map(item => {
+    let desc = '';
+    let error = '';
+    try {
+      const prepared = item.prepare(pendingWorkbook);
+      pendingImportData[item.key] = prepared;
+      desc = item.describe(prepared);
+    } catch (err) {
+      error = err.message;
+    }
+    return `
+      <div class="import-item">
+        <div class="import-item-info">
+          <strong>${escapeHTML(item.label)}</strong>
+          <span class="hint-text">${error ? escapeHTML(error) : escapeHTML(desc)}</span>
+        </div>
+        <button type="button" class="secondary" data-import-key="${item.key}" ${error ? 'disabled' : ''}>確認匯入</button>
       </div>
-      <button type="button" class="secondary" id="confirmImportBtn">確認匯入</button>
-    </div>
-  `;
-  document.getElementById('confirmImportBtn').addEventListener('click', runImport);
+    `;
+  }).join('');
+
+  importItemsList.querySelectorAll('button[data-import-key]').forEach(btn => {
+    btn.addEventListener('click', () => runImportItem(matched.find(i => i.key === btn.dataset.importKey)));
+  });
 }
 
-async function runImport() {
-  if (!pendingImportItem || !pendingImportData) return;
-  const btn = document.getElementById('confirmImportBtn');
+async function runImportItem(item) {
+  const data = pendingImportData[item.key];
+  if (!item || data === undefined) return;
+  const btn = importItemsList.querySelector(`button[data-import-key="${item.key}"]`);
   btn.disabled = true;
   btn.textContent = '匯入中...';
   try {
-    const message = await pendingImportItem.run(pendingImportData);
+    const message = await item.run(data);
     importMsg.style.color = 'var(--color-success)';
     importMsg.textContent = message;
     btn.textContent = '已匯入 ✓';
   } catch (err) {
     importMsg.style.color = 'var(--color-danger)';
-    importMsg.textContent = `「${pendingImportItem.label}」匯入失敗：` + err.message;
+    importMsg.textContent = `「${item.label}」匯入失敗：` + err.message;
     btn.disabled = false;
     btn.textContent = '確認匯入';
   }
