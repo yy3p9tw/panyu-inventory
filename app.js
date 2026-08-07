@@ -9,7 +9,7 @@ import {
 import {
   subscribeToStock, replaceStockForWarehouses,
   subscribeToFactoryMaterial, replaceFactoryMaterial,
-  subscribeToAvailableMaterial, replaceAvailableMaterial,
+  subscribeToItemTags, setItemTag,
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
@@ -80,7 +80,7 @@ let canSeeSummary = false;
 let currentStock = [];
 let currentUsers = [];
 let currentFactoryMaterial = [];
-let currentAvailableMaterial = [];
+let currentItemTags = [];
 let currentSummary = [];
 let currentBatchList = [];
 let currentConsignment = [];
@@ -90,7 +90,7 @@ let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
 let unsubscribeFactoryMaterial = null;
-let unsubscribeAvailableMaterial = null;
+let unsubscribeItemTags = null;
 let unsubscribeSummary = null;
 let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
@@ -134,7 +134,7 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeStock) { unsubscribeStock(); unsubscribeStock = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
   if (unsubscribeFactoryMaterial) { unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null; }
-  if (unsubscribeAvailableMaterial) { unsubscribeAvailableMaterial(); unsubscribeAvailableMaterial = null; }
+  if (unsubscribeItemTags) { unsubscribeItemTags(); unsubscribeItemTags = null; }
   if (unsubscribeSummary) { unsubscribeSummary(); unsubscribeSummary = null; }
   if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
@@ -144,7 +144,7 @@ onAuthStateChanged(auth, async user => {
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
-  currentAvailableMaterial = [];
+  currentItemTags = [];
   currentSummary = [];
   currentRawImport = [];
   currentBatchList = [];
@@ -250,15 +250,15 @@ function applyRoleVisibility() {
       currentFactoryMaterial = rows;
       renderFactoryMaterialTable();
     });
-    unsubscribeAvailableMaterial = subscribeToAvailableMaterial(rows => {
-      currentAvailableMaterial = rows;
+    unsubscribeItemTags = subscribeToItemTags(rows => {
+      currentItemTags = rows;
       renderAvailableMaterialTable();
     });
   } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
     unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
-    unsubscribeAvailableMaterial(); unsubscribeAvailableMaterial = null;
+    unsubscribeItemTags(); unsubscribeItemTags = null;
     currentFactoryMaterial = [];
-    currentAvailableMaterial = [];
+    currentItemTags = [];
   }
 
   if (canSeeSummary && !unsubscribeSummary) {
@@ -272,13 +272,22 @@ function applyRoleVisibility() {
     currentSummary = [];
   }
 
-  if (canSeeStock && !unsubscribeBatchList) {
+  // 批號資料廠務物料分頁也要用（廠務用料/可用原料(泰山)的批號、最短效期），
+  // 純廠務角色（沒有泰山/台中/管理員）canSeeStock 會是 false，所以這裡要跟 canSeeFactory 一起判斷
+  if ((canSeeStock || canSeeFactory) && !unsubscribeBatchList) {
     unsubscribeBatchList = subscribeToBatchList(rows => {
       currentBatchList = rows;
       renderBatchTable();
       renderStockTable();
       renderFactoryMaterialTable();
+      renderAvailableMaterialTable();
     });
+  } else if (!canSeeStock && !canSeeFactory && unsubscribeBatchList) {
+    unsubscribeBatchList(); unsubscribeBatchList = null;
+    currentBatchList = [];
+  }
+
+  if (canSeeStock && !unsubscribeConsignment) {
     unsubscribeConsignment = subscribeToConsignment(rows => {
       currentConsignment = rows;
       renderConsignmentTable();
@@ -288,11 +297,9 @@ function applyRoleVisibility() {
       renderStockTable();
       renderConsignmentTable();
     });
-  } else if (!canSeeStock && unsubscribeBatchList) {
-    unsubscribeBatchList(); unsubscribeBatchList = null;
+  } else if (!canSeeStock && unsubscribeConsignment) {
     unsubscribeConsignment(); unsubscribeConsignment = null;
     unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
-    currentBatchList = [];
     currentConsignment = [];
     currentPendingAdjustments = [];
   }
@@ -441,8 +448,9 @@ searchInput.addEventListener('input', renderStockTable);
 
 // ---------- 廠務物料 ----------
 
-// 廠務用料：品名/數量/最短效期是組合檔「廠務用料」分頁自己算好的（一比一照抄），
-// 批號明細另外用批號.xlsx 的「廠務」庫別即時對出來，當作補充資訊。
+// 廠務用料：品名/數量是庫存.xlsx 裡庫別=廠務的部分（匯入時存進 factoryMaterial），
+// 批號、最短效期是畫面上跟批號.xlsx 的「廠務」庫別即時對出來的，不是匯入時就算好存起來的
+// （每個資料類型都對應各自一份 ERP 匯出檔，不靠組合檔的公式）。
 function renderFactoryMaterialTable() {
   if (!currentFactoryMaterial.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
@@ -458,35 +466,64 @@ function renderFactoryMaterialTable() {
   const sorted = [...currentFactoryMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
+    const nearestExpiry = batches.length
+      ? [...batches].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''))[0].batchNo
+      : '';
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${formatExpiry(r.nearestExpiry)}</td>
+      <td>${formatExpiry(nearestExpiry)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
   }).join('');
 }
 
-// 可用原料(泰山)：品名/庫別名稱/結存數量/批號/過期報廢/標記都是組合檔「可用原料(泰山)」分頁自己算好的，
-// 一列就是一筆，一比一照抄，不用再另外組合。
+// 可用原料(泰山) = 泰山的庫存(庫存.xlsx) + 泰山的批號(批號.xlsx)，畫面上即時組出來，不是自己單獨一份匯入資料。
+// 標記欄位 ERP 沒有對應資料（人工維護），改成可以直接在畫面上編輯，存到 itemTags collection。
+// 過期/報廢沒有可靠來源（原始資料裡一直是空的），不顯示。
 function renderAvailableMaterialTable() {
-  if (!currentAvailableMaterial.length) {
-    availableMaterialTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+  const taishanStock = currentStock.filter(s => s.warehouse === '泰山');
+  if (!taishanStock.length) {
+    availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料，請先到「匯入資料」上傳庫存.xlsx</td></tr>`;
     return;
   }
-  const sorted = [...currentAvailableMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
-  availableMaterialTableBody.innerHTML = sorted.map(r => `
+
+  const batchesByCode = new Map();
+  currentBatchList.forEach(b => {
+    if (b.warehouse !== '泰山') return;
+    if (!batchesByCode.has(b.itemCode)) batchesByCode.set(b.itemCode, []);
+    batchesByCode.get(b.itemCode).push(b);
+  });
+  const tagByCode = new Map(currentItemTags.map(r => [r.itemCode, r.tag]));
+
+  const sorted = [...taishanStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  availableMaterialTableBody.innerHTML = sorted.map(r => {
+    const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
+    const tag = tagByCode.get(r.itemCode) || '';
+    return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${r.batchNo || '-'}</td>
-      <td>${r.expired ? escapeHTML(r.expired) : ''}</td>
-      <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
+      <td>${renderBatchCell(batches)}</td>
+      <td><input type="text" class="tag-input" data-item-code="${escapeHTML(r.itemCode)}" value="${escapeHTML(tag)}" placeholder="原料/成品/半成品..." style="width:110px; padding:4px 6px;" /></td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
+
+// 標記是人工維護欄位，直接在表格裡編輯，失焦時存檔（不是整批匯入）
+availableMaterialTableBody.addEventListener('change', async e => {
+  if (!e.target.classList.contains('tag-input')) return;
+  const itemCode = e.target.dataset.itemCode;
+  const tag = e.target.value.trim();
+  try {
+    await setItemTag(itemCode, tag);
+  } catch (err) {
+    alert('儲存標記失敗：' + err.message);
+  }
+});
 
 // ---------- 彙總 ----------
 
@@ -745,7 +782,7 @@ function firstSheet(wb) {
 // 檔案最後還有「類別:」「會計科目:」這種小計列，品號欄位不是空的但也不是真正的品號，兩種都要排除。
 function parseStockSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-  if (!rows.length) return { taishan: [], taichung: [] };
+  if (!rows.length) return { taishan: [], taichung: [], factory: [] };
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
   const idxName = findColumnIndex(header, ['品名']);
@@ -755,9 +792,7 @@ function parseStockSheet(sheet) {
     throw new Error('找不到「品號」「庫別名稱」或「庫存數量」欄位，格式可能跟預期不同');
   }
 
-  // 廠務資料現在一律從組合檔「廠務用料」分頁一比一匯入（parseFactoryMaterialFromMaster），
-  // 這裡只處理泰山/台中兩個實體倉庫
-  const result = { taishan: [], taichung: [] };
+  const result = { taishan: [], taichung: [], factory: [] };
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const itemCode = (row[idxCode] || '').toString().trim();
@@ -768,6 +803,7 @@ function parseStockSheet(sheet) {
     const warehouse = normalizeWarehouse(whRaw);
     if (warehouse === '泰山') result.taishan.push({ itemCode, itemName, warehouse: '泰山', qty });
     else if (warehouse === '台中') result.taichung.push({ itemCode, itemName, warehouse: '台中', qty });
+    else if (whRaw === '廠務') result.factory.push({ itemCode, itemName, qty });
   }
   return result;
 }
@@ -942,76 +978,9 @@ function parseWholeWorkbookRaw(wb) {
   return records;
 }
 
-// 組合檔（1150805庫存YU.xlsx）裡「可用原料(泰山)」「廠務用料」這兩個分頁自己就已經算好
-// 結存數量/批號/最短效期/過期報廢/標記了（VLOOKUP/公式都做完了），直接照抄，不用自己重算。
-// 用分頁名稱直接抓（wb.Sheets['分頁名稱']），因為組合檔的分頁名稱是人看得懂的中文，跟單一 ERP 匯出檔不一樣。
-
-function parseAvailableMaterialFromMaster(wb) {
-  const sheet = wb.Sheets['可用原料(泰山)'];
-  if (!sheet) throw new Error('這份檔案裡找不到「可用原料(泰山)」分頁');
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-  if (!rows.length) return [];
-  const header = rows[0];
-  const idxCode = findColumnIndex(header, ['品號']);
-  const idxName = findColumnIndex(header, ['品名']);
-  const idxTag = findColumnIndex(header, ['廠務']);
-  const idxQty = findColumnIndex(header, ['結存數量']);
-  const idxBatch = findColumnIndex(header, ['批號']);
-  const idxExpired = findColumnIndex(header, ['過期/報廢']);
-  if (idxCode === -1 || idxQty === -1) {
-    throw new Error('「可用原料(泰山)」分頁找不到「品號」或「結存數量」欄位，格式可能跟預期不同');
-  }
-
-  const records = [];
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const itemCode = (row[idxCode] || '').toString().trim();
-    if (!isRealItemCode(itemCode)) continue;
-    records.push({
-      itemCode,
-      itemName: idxName !== -1 ? (row[idxName] || '').toString().trim() : '',
-      qty: Number(row[idxQty]) || 0,
-      batchNo: idxBatch !== -1 ? (row[idxBatch] || '').toString().trim() : '',
-      expired: idxExpired !== -1 ? (row[idxExpired] || '').toString().trim() : '',
-      tag: idxTag !== -1 ? (row[idxTag] || '').toString().trim() : ''
-    });
-  }
-  return records;
-}
-
-function parseFactoryMaterialFromMaster(wb) {
-  const sheet = wb.Sheets['廠務用料'];
-  if (!sheet) throw new Error('這份檔案裡找不到「廠務用料」分頁');
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-  if (!rows.length) return [];
-  const header = rows[0];
-  const idxCode = findColumnIndex(header, ['品號']);
-  const idxName = findColumnIndex(header, ['品名']);
-  const idxQty = findColumnIndex(header, ['結存數量']);
-  const idxExpiry = findColumnIndex(header, ['最短效期']);
-  if (idxCode === -1 || idxQty === -1) {
-    throw new Error('「廠務用料」分頁找不到「品號」或「結存數量」欄位，格式可能跟預期不同');
-  }
-
-  const records = [];
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const itemCode = (row[idxCode] || '').toString().trim();
-    if (!isRealItemCode(itemCode)) continue;
-    records.push({
-      itemCode,
-      itemName: idxName !== -1 ? (row[idxName] || '').toString().trim() : '',
-      qty: Number(row[idxQty]) || 0,
-      nearestExpiry: idxExpiry !== -1 ? (row[idxExpiry] || '').toString().trim() : ''
-    });
-  }
-  return records;
-}
-
 // 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫還沒有真實檔案樣本，
 // 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
-// 同一個檔名可能對到不只一個項目（例如組合檔同時可以做「整份原始匯入」「可用原料」「廠務用料」），
-// 所以是列出所有符合的候選，不是只挑第一個。
+// 同一個檔名可能對到不只一個項目，所以是列出所有符合的候選，不是只挑第一個。
 const IMPORT_ITEMS = [
   {
     key: 'rawAll',
@@ -1028,36 +997,15 @@ const IMPORT_ITEMS = [
     }
   },
   {
-    key: 'availableMaterialFromMaster',
-    label: '可用原料(泰山)（組合檔分頁，一比一）',
-    matchesFilename: name => name.includes('庫存YU'),
-    prepare: wb => parseAvailableMaterialFromMaster(wb),
-    describe: records => `共 ${records.length} 筆`,
-    run: async records => {
-      const result = await replaceAvailableMaterial(records);
-      return `已更新可用原料(泰山) ${result.written} 筆`;
-    }
-  },
-  {
-    key: 'factoryMaterialFromMaster',
-    label: '廠務用料（組合檔分頁，一比一）',
-    matchesFilename: name => name.includes('庫存YU'),
-    prepare: wb => parseFactoryMaterialFromMaster(wb),
-    describe: records => `共 ${records.length} 筆`,
-    run: async records => {
-      const result = await replaceFactoryMaterial(records);
-      return `已更新廠務用料 ${result.written} 筆`;
-    }
-  },
-  {
     key: 'stock',
     label: '庫存',
     matchesFilename: name => name === '庫存',
     prepare: wb => parseStockSheet(firstSheet(wb)),
-    describe: data => `泰山 ${data.taishan.length} 筆、台中 ${data.taichung.length} 筆`,
+    describe: data => `泰山 ${data.taishan.length} 筆、台中 ${data.taichung.length} 筆、廠務 ${data.factory.length} 筆`,
     run: async data => {
       const stockResult = await replaceStockForWarehouses([...data.taishan, ...data.taichung], WAREHOUSES);
-      return `已更新泰山/台中庫存 ${stockResult.written} 筆`;
+      const factoryResult = await replaceFactoryMaterial(data.factory);
+      return `已更新泰山/台中庫存 ${stockResult.written} 筆、廠務用料 ${factoryResult.written} 筆`;
     }
   },
   {

@@ -60,7 +60,7 @@
       <section id="tabFactory" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>廠務用料</h2>
-          <p class="hint-text">品名、數量、最短效期，來源是組合檔裡的「廠務用料」分頁，一比一照抄。批號明細另外用批號.xlsx（廠務）即時對出來。</p>
+          <p class="hint-text">品名、數量是庫存.xlsx 裡庫別=廠務的部分，批號、最短效期是即時去對批號.xlsx（廠務）查出來的。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -71,11 +71,11 @@
           </div>
 
           <h2 style="margin-top:24px;">可用原料（泰山）</h2>
-          <p class="hint-text">品名、數量、批號、過期/報廢、標記，來源是組合檔裡的「可用原料(泰山)」分頁，一比一照抄。</p>
+          <p class="hint-text">就是泰山的庫存，批號即時去對批號.xlsx（泰山廠區）查出來。標記（原料/成品/半成品...）ERP 沒有這份資料，直接在下面表格編輯，改完自動存檔。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>品名</th><th>數量</th><th>批號</th><th>過期/報廢</th><th>標記</th></tr>
+                <tr><th>品名</th><th>數量</th><th>批號</th><th>標記</th></tr>
               </thead>
               <tbody id="availableMaterialTableBody"></tbody>
             </table>

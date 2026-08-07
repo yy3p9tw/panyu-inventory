@@ -131,8 +131,7 @@ export function subscribeToFactoryMaterial(callback, onError) {
   return subscribeToCollection('factoryMaterial', callback, onError);
 }
 
-// records: [{ itemCode, itemName, qty, nearestExpiry }] — nearestExpiry 是組合檔「廠務用料」分頁自己算好的最短效期，
-// 批號明細另外在畫面上跟 batchList（廠務）即時對出來，不存在這裡
+// records: [{ itemCode, itemName, qty }] — 批號、最短效期是在畫面上跟 batchList（廠務）即時對出來的，不存在這裡
 export async function replaceFactoryMaterial(records) {
   const docs = records.map(r => ({
     id: sanitizeIdPart(r.itemCode),
@@ -140,33 +139,21 @@ export async function replaceFactoryMaterial(records) {
       itemCode: r.itemCode,
       itemName: r.itemName,
       qty: r.qty || 0,
-      nearestExpiry: r.nearestExpiry || '',
       updatedAt: Date.now()
     }
   }));
   return replaceWholeCollection('factoryMaterial', docs);
 }
 
-export function subscribeToAvailableMaterial(callback, onError) {
-  return subscribeToCollection('availableMaterial', callback, onError);
+// ---------- 品項標記（原料/成品/半成品...）：ERP 沒有這份資料，人工維護，逐筆編輯不是整批匯入 ----------
+
+export function subscribeToItemTags(callback, onError) {
+  return subscribeToCollection('itemTags', callback, onError);
 }
 
-// records: [{ itemCode, itemName, qty, batchNo, expired, tag }] —
-// 這幾個欄位組合檔的「可用原料(泰山)」分頁自己都算好了，一列就是一筆，不用再組合
-export async function replaceAvailableMaterial(records) {
-  const docs = records.map(r => ({
-    id: sanitizeIdPart(r.itemCode),
-    data: {
-      itemCode: r.itemCode,
-      itemName: r.itemName,
-      qty: r.qty || 0,
-      batchNo: r.batchNo || '',
-      expired: r.expired || '',
-      tag: r.tag || '',
-      updatedAt: Date.now()
-    }
-  }));
-  return replaceWholeCollection('availableMaterial', docs);
+export async function setItemTag(itemCode, tag) {
+  const ref = doc(db, 'itemTags', sanitizeIdPart(itemCode));
+  await setDoc(ref, { itemCode, tag, updatedAt: Date.now() }, { merge: true });
 }
 
 // ---------- 批號：每次匯入完全覆蓋 ----------
