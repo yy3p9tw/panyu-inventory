@@ -308,7 +308,7 @@ function renderQtyCell(s, adjustment, batches) {
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
   if (batches && batches.length) {
-    const title = batches.map(b => `${formatExpiry(b.batchNo)}：${b.qty}`).join('\n');
+    const title = batches.map(b => `${b.batchNo}：${b.qty}`).join('\n');
     badges.push(`<span class="badge badge-batch" title="${escapeHTML(title)}">批號 ${batches.length} 筆</span>`);
   }
   const displayQty = s.qty + (adjustment || 0);
@@ -420,7 +420,7 @@ function renderFactoryMaterialTable() {
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = batchesByCode.get(r.itemCode);
     const batchText = batches && batches.length
-      ? batches.map(b => `${formatExpiry(b.batchNo)}：${b.qty}`).join('、')
+      ? batches.map(b => `${b.batchNo}：${b.qty}`).join('、')
       : '-';
     return `
     <tr>
@@ -442,7 +442,7 @@ function renderAvailableMaterialTable() {
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
-      <td>${r.batchNo ? formatExpiry(r.batchNo) : '-'}</td>
+      <td>${r.batchNo || '-'}</td>
       <td>${escapeHTML(r.expired)}</td>
       <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
     </tr>
@@ -518,7 +518,7 @@ function renderBatchTable() {
       <td>${escapeHTML(r.itemCode)}</td>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${escapeHTML(r.warehouse)}</td>
-      <td>${r.batchNo ? formatExpiry(r.batchNo) : '-'}</td>
+      <td>${r.batchNo || '-'}</td>
       <td>${r.qty}</td>
     </tr>
   `).join('');
