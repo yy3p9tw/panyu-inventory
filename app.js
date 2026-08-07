@@ -320,8 +320,11 @@ function renderQtyCell(s, adjustment, batches) {
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
   if (batches && batches.length) {
-    const title = batches.map(b => `${b.batchNo}：${b.qty}`).join('\n');
-    badges.push(`<span class="badge badge-batch" title="${escapeHTML(title)}">批號 ${batches.length} 筆</span>`);
+    const sorted = [...batches].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''));
+    const shortest = sorted[0];
+    const extra = sorted.length - 1;
+    const title = sorted.map(b => b.batchNo).join('\n');
+    badges.push(`<span class="badge badge-batch" title="${escapeHTML(title)}">批號 ${escapeHTML(shortest.batchNo)}${extra ? ` +${extra}` : ''}</span>`);
   }
   const displayQty = s.qty + (adjustment || 0);
   if (adjustment) {
