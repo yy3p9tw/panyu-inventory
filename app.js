@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=5';
+import { auth } from './firebase-config.js?v=6';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -15,8 +15,8 @@ import {
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=5';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=5';
+} from './inventory-service.js?v=6';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=6';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -488,7 +488,7 @@ function renderFactoryMaterialTable() {
 }
 
 // 可用原料(泰山) = 泰山的庫存(庫存.xlsx) + 泰山的批號(批號.xlsx)，畫面上即時組出來，不是自己單獨一份匯入資料。
-// 標記欄位讀 itemReference collection 的 tag 欄位（來源：參照(新)分頁匯入或「參照」分頁手動編輯，見下面）。
+// 標記欄位讀 itemReference collection 的 tag 欄位，唯讀顯示——要改標記到「參照」分頁改，不要在這裡重複編輯。
 // 過期/報廢沒有可靠來源（原始資料裡一直是空的），不顯示。
 function renderAvailableMaterialTable() {
   const taishanStock = currentStock.filter(s => s.warehouse === '泰山');
@@ -514,7 +514,7 @@ function renderAvailableMaterialTable() {
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
       <td>${renderBatchCell(batches)}</td>
-      <td><input type="text" class="ref-field-input" data-item-code="${escapeHTML(r.itemCode)}" data-field="tag" value="${escapeHTML(tag)}" placeholder="原料/成品/半成品..." style="width:110px; padding:4px 6px;" /></td>
+      <td>${tag ? escapeHTML(tag) : '-'}</td>
     </tr>
   `;
   }).join('');
@@ -567,10 +567,9 @@ function renderItemReferenceTable() {
 
 referenceSearchInput.addEventListener('input', renderItemReferenceTable);
 
-// 標記/參照主檔的每個欄位都是人工維護，直接在表格裡編輯，失焦時只存那一欄（不是整批匯入）——
-// 可用原料(泰山)的標記欄位跟「參照」分頁共用同一個 itemReference collection，所以用同一個 class 名稱、
-// 事件委派掛在各自的 tbody 上即可。
-async function handleReferenceFieldChange(e) {
+// 參照主檔每個欄位都是人工維護，直接在表格裡編輯，失焦時只存那一欄（不是整批匯入）。
+// 可用原料(泰山)的標記欄位是唯讀顯示，不重複提供編輯入口——要改標記統一到這個分頁改。
+referenceTableBody.addEventListener('change', async e => {
   if (!e.target.classList.contains('ref-field-input')) return;
   const itemCode = e.target.dataset.itemCode;
   const field = e.target.dataset.field;
@@ -580,9 +579,7 @@ async function handleReferenceFieldChange(e) {
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
-}
-availableMaterialTableBody.addEventListener('change', handleReferenceFieldChange);
-referenceTableBody.addEventListener('change', handleReferenceFieldChange);
+});
 
 // ---------- 彙總 ----------
 
