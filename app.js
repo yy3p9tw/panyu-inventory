@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=6';
+import { auth } from './firebase-config.js?v=7';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -15,8 +15,8 @@ import {
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=6';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=6';
+} from './inventory-service.js?v=7';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=7';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -47,6 +47,7 @@ const availableMaterialTableBody = document.getElementById('availableMaterialTab
 const referenceSearchInput = document.getElementById('referenceSearchInput');
 const referenceTableBody = document.getElementById('referenceTableBody');
 const referenceCount = document.getElementById('referenceCount');
+const referenceEditToggleBtn = document.getElementById('referenceEditToggleBtn');
 
 const summarySearchInput = document.getElementById('summarySearchInput');
 const summaryTableBody = document.getElementById('summaryTableBody');
@@ -537,6 +538,9 @@ const REFERENCE_FIELDS = [
   { key: 'note', label: '註記' }
 ];
 
+// 平常是唯讀顯示，按「編輯」才切換成每欄可輸入——避免一進分頁就整頁都是輸入框，容易誤改。
+let referenceEditMode = false;
+
 function renderItemReferenceTable() {
   const keyword = referenceSearchInput.value.trim().toLowerCase();
   let items = currentItemReference;
@@ -550,7 +554,7 @@ function renderItemReferenceTable() {
 
   referenceCount.textContent = currentItemReference.length
     ? (keyword ? `共 ${currentItemReference.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentItemReference.length} 筆`)
-    : '目前沒有資料，請先到「匯入資料」上傳組合檔（1150805庫存YU.xlsx 這種），或直接在下面新增';
+    : '目前沒有資料，請先到「匯入資料」上傳組合檔（1150805庫存YU.xlsx 這種），或按「編輯」直接新增';
 
   if (items.length === 0) {
     referenceTableBody.innerHTML = `<tr><td colspan="${REFERENCE_FIELDS.length + 1}" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
@@ -560,14 +564,23 @@ function renderItemReferenceTable() {
   referenceTableBody.innerHTML = items.map(r => `
     <tr>
       <td>${escapeHTML(r.itemCode)}</td>
-      ${REFERENCE_FIELDS.map(f => `<td><input type="text" class="ref-field-input" data-item-code="${escapeHTML(r.itemCode)}" data-field="${f.key}" value="${escapeHTML(r[f.key] || '')}" style="width:90px; padding:4px 6px;" /></td>`).join('')}
+      ${REFERENCE_FIELDS.map(f => referenceEditMode
+        ? `<td><input type="text" class="ref-field-input" data-item-code="${escapeHTML(r.itemCode)}" data-field="${f.key}" value="${escapeHTML(r[f.key] || '')}" style="width:90px; padding:4px 6px;" /></td>`
+        : `<td>${r[f.key] ? escapeHTML(r[f.key]) : '-'}</td>`
+      ).join('')}
     </tr>
   `).join('');
 }
 
 referenceSearchInput.addEventListener('input', renderItemReferenceTable);
 
-// 參照主檔每個欄位都是人工維護，直接在表格裡編輯，失焦時只存那一欄（不是整批匯入）。
+referenceEditToggleBtn.addEventListener('click', () => {
+  referenceEditMode = !referenceEditMode;
+  referenceEditToggleBtn.textContent = referenceEditMode ? '完成編輯' : '編輯';
+  renderItemReferenceTable();
+});
+
+// 參照主檔每個欄位都是人工維護，編輯模式下直接在表格裡改，失焦時只存那一欄（不是整批匯入）。
 // 可用原料(泰山)的標記欄位是唯讀顯示，不重複提供編輯入口——要改標記統一到這個分頁改。
 referenceTableBody.addEventListener('change', async e => {
   if (!e.target.classList.contains('ref-field-input')) return;
