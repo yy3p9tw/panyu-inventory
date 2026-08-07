@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=4';
+import { auth } from './firebase-config.js?v=5';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -9,14 +9,14 @@ import {
 import {
   subscribeToStock, replaceStockForWarehouses,
   subscribeToFactoryMaterial, replaceFactoryMaterial,
-  subscribeToItemTags, setItemTag, importItemTagsFromReference,
+  subscribeToItemReference, setItemReferenceField, importItemReferenceFromMaster,
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=4';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=4';
+} from './inventory-service.js?v=5';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=5';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -43,6 +43,10 @@ const usersTableBody = document.getElementById('usersTableBody');
 
 const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');
 const availableMaterialTableBody = document.getElementById('availableMaterialTableBody');
+
+const referenceSearchInput = document.getElementById('referenceSearchInput');
+const referenceTableBody = document.getElementById('referenceTableBody');
+const referenceCount = document.getElementById('referenceCount');
 
 const summarySearchInput = document.getElementById('summarySearchInput');
 const summaryTableBody = document.getElementById('summaryTableBody');
@@ -80,7 +84,7 @@ let canSeeSummary = false;
 let currentStock = [];
 let currentUsers = [];
 let currentFactoryMaterial = [];
-let currentItemTags = [];
+let currentItemReference = [];
 let currentSummary = [];
 let currentBatchList = [];
 let currentConsignment = [];
@@ -90,7 +94,7 @@ let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
 let unsubscribeFactoryMaterial = null;
-let unsubscribeItemTags = null;
+let unsubscribeItemReference = null;
 let unsubscribeSummary = null;
 let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
@@ -134,7 +138,7 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeStock) { unsubscribeStock(); unsubscribeStock = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
   if (unsubscribeFactoryMaterial) { unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null; }
-  if (unsubscribeItemTags) { unsubscribeItemTags(); unsubscribeItemTags = null; }
+  if (unsubscribeItemReference) { unsubscribeItemReference(); unsubscribeItemReference = null; }
   if (unsubscribeSummary) { unsubscribeSummary(); unsubscribeSummary = null; }
   if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
@@ -144,7 +148,7 @@ onAuthStateChanged(auth, async user => {
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
-  currentItemTags = [];
+  currentItemReference = [];
   currentSummary = [];
   currentRawImport = [];
   currentBatchList = [];
@@ -198,6 +202,7 @@ function applyRoleVisibility() {
   const searchBtn = document.querySelector('.tab-btn[data-tab="search"]');
   const factoryBtn = document.querySelector('.tab-btn[data-tab="factory"]');
   const availableMaterialBtn = document.querySelector('.tab-btn[data-tab="availableMaterial"]');
+  const referenceBtn = document.querySelector('.tab-btn[data-tab="reference"]');
   const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
   const batchBtn = document.querySelector('.tab-btn[data-tab="batch"]');
   const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
@@ -209,6 +214,7 @@ function applyRoleVisibility() {
   searchBtn.style.display = canSeeStock ? '' : 'none';
   factoryBtn.style.display = canSeeFactory ? '' : 'none';
   availableMaterialBtn.style.display = canSeeFactory ? '' : 'none';
+  referenceBtn.style.display = canSeeFactory ? '' : 'none';
   summaryBtn.style.display = canSeeSummary ? '' : 'none';
   batchBtn.style.display = canSeeStock ? '' : 'none';
   consignmentBtn.style.display = canSeeStock ? '' : 'none';
@@ -253,15 +259,16 @@ function applyRoleVisibility() {
       currentFactoryMaterial = rows;
       renderFactoryMaterialTable();
     });
-    unsubscribeItemTags = subscribeToItemTags(rows => {
-      currentItemTags = rows;
+    unsubscribeItemReference = subscribeToItemReference(rows => {
+      currentItemReference = rows;
       renderAvailableMaterialTable();
+      renderItemReferenceTable();
     });
   } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
     unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
-    unsubscribeItemTags(); unsubscribeItemTags = null;
+    unsubscribeItemReference(); unsubscribeItemReference = null;
     currentFactoryMaterial = [];
-    currentItemTags = [];
+    currentItemReference = [];
   }
 
   if (canSeeSummary && !unsubscribeSummary) {
@@ -481,7 +488,7 @@ function renderFactoryMaterialTable() {
 }
 
 // 可用原料(泰山) = 泰山的庫存(庫存.xlsx) + 泰山的批號(批號.xlsx)，畫面上即時組出來，不是自己單獨一份匯入資料。
-// 標記欄位 ERP 沒有對應資料（人工維護），改成可以直接在畫面上編輯，存到 itemTags collection。
+// 標記欄位讀 itemReference collection 的 tag 欄位（來源：參照(新)分頁匯入或「參照」分頁手動編輯，見下面）。
 // 過期/報廢沒有可靠來源（原始資料裡一直是空的），不顯示。
 function renderAvailableMaterialTable() {
   const taishanStock = currentStock.filter(s => s.warehouse === '泰山');
@@ -496,7 +503,7 @@ function renderAvailableMaterialTable() {
     if (!batchesByCode.has(b.itemCode)) batchesByCode.set(b.itemCode, []);
     batchesByCode.get(b.itemCode).push(b);
   });
-  const tagByCode = new Map(currentItemTags.map(r => [r.itemCode, r.tag]));
+  const tagByCode = new Map(currentItemReference.map(r => [r.itemCode, r.tag]));
 
   const sorted = [...taishanStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
   availableMaterialTableBody.innerHTML = sorted.map(r => {
@@ -507,23 +514,75 @@ function renderAvailableMaterialTable() {
       <td>${escapeHTML(r.itemName)}</td>
       <td>${r.qty}</td>
       <td>${renderBatchCell(batches)}</td>
-      <td><input type="text" class="tag-input" data-item-code="${escapeHTML(r.itemCode)}" value="${escapeHTML(tag)}" placeholder="原料/成品/半成品..." style="width:110px; padding:4px 6px;" /></td>
+      <td><input type="text" class="ref-field-input" data-item-code="${escapeHTML(r.itemCode)}" data-field="tag" value="${escapeHTML(tag)}" placeholder="原料/成品/半成品..." style="width:110px; padding:4px 6px;" /></td>
     </tr>
   `;
   }).join('');
 }
 
-// 標記是人工維護欄位，直接在表格裡編輯，失焦時存檔（不是整批匯入）
-availableMaterialTableBody.addEventListener('change', async e => {
-  if (!e.target.classList.contains('tag-input')) return;
-  const itemCode = e.target.dataset.itemCode;
-  const tag = e.target.value.trim();
-  try {
-    await setItemTag(itemCode, tag);
-  } catch (err) {
-    alert('儲存標記失敗：' + err.message);
+// ---------- 參照（品項主檔，人工維護，逐欄位可編輯） ----------
+
+const REFERENCE_FIELDS = [
+  { key: 'itemName', label: '品名' },
+  { key: 'origin', label: '產地' },
+  { key: 'unit', label: '單位' },
+  { key: 'purchaseType', label: '採購' },
+  { key: 'category', label: '類別' },
+  { key: 'majorCategory', label: '大類' },
+  { key: 'netWeight', label: '淨重' },
+  { key: 'grossWeight', label: '毛重' },
+  { key: 'companyType', label: '公司別' },
+  { key: 'tag', label: '標記(廠務)' },
+  { key: 'isSplit', label: '散裝' },
+  { key: 'note', label: '註記' }
+];
+
+function renderItemReferenceTable() {
+  const keyword = referenceSearchInput.value.trim().toLowerCase();
+  let items = currentItemReference;
+  if (keyword) {
+    items = items.filter(it =>
+      (it.itemCode || '').toLowerCase().includes(keyword) ||
+      (it.itemName || '').toLowerCase().includes(keyword)
+    );
   }
-});
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+  referenceCount.textContent = currentItemReference.length
+    ? (keyword ? `共 ${currentItemReference.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentItemReference.length} 筆`)
+    : '目前沒有資料，請先到「匯入資料」上傳組合檔（1150805庫存YU.xlsx 這種），或直接在下面新增';
+
+  if (items.length === 0) {
+    referenceTableBody.innerHTML = `<tr><td colspan="${REFERENCE_FIELDS.length + 1}" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    return;
+  }
+
+  referenceTableBody.innerHTML = items.map(r => `
+    <tr>
+      <td>${escapeHTML(r.itemCode)}</td>
+      ${REFERENCE_FIELDS.map(f => `<td><input type="text" class="ref-field-input" data-item-code="${escapeHTML(r.itemCode)}" data-field="${f.key}" value="${escapeHTML(r[f.key] || '')}" style="width:90px; padding:4px 6px;" /></td>`).join('')}
+    </tr>
+  `).join('');
+}
+
+referenceSearchInput.addEventListener('input', renderItemReferenceTable);
+
+// 標記/參照主檔的每個欄位都是人工維護，直接在表格裡編輯，失焦時只存那一欄（不是整批匯入）——
+// 可用原料(泰山)的標記欄位跟「參照」分頁共用同一個 itemReference collection，所以用同一個 class 名稱、
+// 事件委派掛在各自的 tbody 上即可。
+async function handleReferenceFieldChange(e) {
+  if (!e.target.classList.contains('ref-field-input')) return;
+  const itemCode = e.target.dataset.itemCode;
+  const field = e.target.dataset.field;
+  const value = e.target.value.trim();
+  try {
+    await setItemReferenceField(itemCode, field, value);
+  } catch (err) {
+    alert('儲存失敗：' + err.message);
+  }
+}
+availableMaterialTableBody.addEventListener('change', handleReferenceFieldChange);
+referenceTableBody.addEventListener('change', handleReferenceFieldChange);
 
 // ---------- 彙總 ----------
 
@@ -978,29 +1037,52 @@ function parseWholeWorkbookRaw(wb) {
   return records;
 }
 
-// 組合檔（1150805庫存YU.xlsx）的「參照 (新)」分頁的「廠務」欄位可以拿來當「可用原料(泰山)」
-// 標記欄位的初始值——這個欄位本身是人工維護的品項主檔，不是每天變動的 ERP 資料，所以偶爾匯入一次，
-// 之後有需要再到「可用原料(泰山)」分頁手動改。只 set/merge、不整批覆蓋，不會洗掉手動改過的其他品項。
-function parseItemTagsFromReference(wb) {
+// 組合檔（1150805庫存YU.xlsx）的「參照 (新)」分頁是人工維護的品項主檔，不是每天變動的 ERP 資料，
+// 可以整批匯入當初始值，之後有需要再到「參照」分頁手動改。只 set/merge、不整批覆蓋，不會洗掉手動改過的其他品項。
+function parseItemReferenceFromMaster(wb) {
   const sheet = wb.Sheets['參照 (新)'];
   if (!sheet) throw new Error('這份檔案裡找不到「參照 (新)」分頁');
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
+  const idxName = findColumnIndex(header, ['品名']);
+  const idxOrigin = findColumnIndex(header, ['產地']);
+  const idxUnit = findColumnIndex(header, ['單位']);
+  const idxPurchaseType = findColumnIndex(header, ['採購']);
+  const idxCategory = findColumnIndex(header, ['類別']);
+  const idxMajorCategory = findColumnIndex(header, ['大類']);
+  const idxNetWeight = findColumnIndex(header, ['淨重']);
+  const idxGrossWeight = findColumnIndex(header, ['毛重']);
+  const idxCompanyType = findColumnIndex(header, ['公司別']);
   const idxTag = findColumnIndex(header, ['廠務']);
-  if (idxCode === -1 || idxTag === -1) {
-    throw new Error('「參照 (新)」分頁找不到「品號」或「廠務」欄位，格式可能跟預期不同');
+  const idxSplit = findColumnIndex(header, ['備註']);
+  const idxNote = findColumnIndex(header, ['註記']);
+  if (idxCode === -1) {
+    throw new Error('「參照 (新)」分頁找不到「品號」欄位，格式可能跟預期不同');
   }
 
+  const cell = (row, idx) => idx !== -1 ? (row[idx] || '').toString().trim() : '';
   const records = [];
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    const itemCode = (row[idxCode] || '').toString().trim();
+    const itemCode = cell(row, idxCode);
     if (!isRealItemCode(itemCode)) continue;
-    const tag = (row[idxTag] || '').toString().trim();
-    if (!tag) continue;
-    records.push({ itemCode, tag });
+    records.push({
+      itemCode,
+      itemName: cell(row, idxName),
+      origin: cell(row, idxOrigin),
+      unit: cell(row, idxUnit),
+      purchaseType: cell(row, idxPurchaseType),
+      category: cell(row, idxCategory),
+      majorCategory: cell(row, idxMajorCategory),
+      netWeight: cell(row, idxNetWeight),
+      grossWeight: cell(row, idxGrossWeight),
+      companyType: cell(row, idxCompanyType),
+      tag: cell(row, idxTag),
+      isSplit: cell(row, idxSplit),
+      note: cell(row, idxNote)
+    });
   }
   return records;
 }
@@ -1024,14 +1106,14 @@ const IMPORT_ITEMS = [
     }
   },
   {
-    key: 'itemTagsFromReference',
-    label: '可用原料(泰山)標記（參照(新)分頁，當初始值，不覆蓋手動改過的）',
+    key: 'itemReferenceFromMaster',
+    label: '參照（品項主檔，當初始值，不覆蓋手動改過的）',
     matchesFilename: name => name.includes('庫存YU'),
-    prepare: wb => parseItemTagsFromReference(wb),
-    describe: records => `共 ${records.length} 筆有標記的品項`,
+    prepare: wb => parseItemReferenceFromMaster(wb),
+    describe: records => `共 ${records.length} 筆`,
     run: async records => {
-      const result = await importItemTagsFromReference(records);
-      return `已更新標記 ${result.written} 筆`;
+      const result = await importItemReferenceFromMaster(records);
+      return `已更新參照 ${result.written} 筆`;
     }
   },
   {

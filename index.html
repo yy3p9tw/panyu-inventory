@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <header class="site-header">
@@ -35,6 +35,7 @@
         <button type="button" class="tab-btn active" data-tab="search">品項查詢</button>
         <button type="button" class="tab-btn" data-tab="factory">廠務物料</button>
         <button type="button" class="tab-btn" data-tab="availableMaterial">可用原料(泰山)</button>
+        <button type="button" class="tab-btn" data-tab="reference">參照</button>
         <button type="button" class="tab-btn" data-tab="summary">彙總</button>
         <button type="button" class="tab-btn" data-tab="batch">批號</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
@@ -77,13 +78,34 @@
       <section id="tabAvailableMaterial" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>可用原料（泰山）</h2>
-          <p class="hint-text">就是泰山的庫存，批號即時去對批號.xlsx（泰山廠區）查出來。標記（原料/成品/半成品...）可以從組合檔（1150805庫存YU.xlsx 這種）的「參照(新)」分頁匯入當初始值，也可以直接在下面表格編輯，改完自動存檔。</p>
+          <p class="hint-text">就是泰山的庫存，批號即時去對批號.xlsx（泰山廠區）查出來。標記直接在下面編輯，或到「參照」分頁統一管理。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
                 <tr><th>品名</th><th>數量</th><th>批號</th><th>標記</th></tr>
               </thead>
               <tbody id="availableMaterialTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 參照（品項主檔，人工維護，廠務角色專用，跟廠務物料同一組角色可視範圍） -->
+      <section id="tabReference" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>參照</h2>
+          <p class="hint-text">品項主檔，ERP 沒有這份資料，人工維護。可以從組合檔（1150805庫存YU.xlsx 這種）的「參照(新)」分頁匯入當初始值（不會覆蓋已經手動改過的品項），也可以直接在下面表格逐欄編輯，改完自動存檔。</p>
+          <input type="text" id="referenceSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="referenceCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>品號</th><th>品名</th><th>產地</th><th>單位</th><th>採購</th><th>類別</th><th>大類</th>
+                  <th>淨重</th><th>毛重</th><th>公司別</th><th>標記(廠務)</th><th>散裝</th><th>註記</th>
+                </tr>
+              </thead>
+              <tbody id="referenceTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -202,6 +224,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=4"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>

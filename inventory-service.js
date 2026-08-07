@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=4';
+import { db } from './firebase-config.js?v=5';
 import {
   collection,
   onSnapshot,
@@ -145,29 +145,32 @@ export async function replaceFactoryMaterial(records) {
   return replaceWholeCollection('factoryMaterial', docs);
 }
 
-// ---------- 品項標記（原料/成品/半成品...）：ERP 沒有這份資料，人工維護，逐筆編輯不是整批匯入 ----------
+// ---------- 品項參照主檔（品名/產地/單位/採購/類別/大類/淨重/毛重/公司別/標記/散裝/註記）：
+// ERP 沒有這份資料，是人工維護的品項主檔，逐欄位編輯；也可以從組合檔的「參照(新)」分頁批次匯入當初始值 ----------
 
-export function subscribeToItemTags(callback, onError) {
-  return subscribeToCollection('itemTags', callback, onError);
+export function subscribeToItemReference(callback, onError) {
+  return subscribeToCollection('itemReference', callback, onError);
 }
 
-export async function setItemTag(itemCode, tag) {
-  const ref = doc(db, 'itemTags', sanitizeIdPart(itemCode));
-  await setDoc(ref, { itemCode, tag, updatedAt: Date.now() }, { merge: true });
+// 表格裡單一欄位編輯，改一欄存一欄，不影響其他欄位
+export async function setItemReferenceField(itemCode, field, value) {
+  const ref = doc(db, 'itemReference', sanitizeIdPart(itemCode));
+  await setDoc(ref, { itemCode, [field]: value, updatedAt: Date.now() }, { merge: true });
 }
 
-// 組合檔「參照(新)」分頁的「廠務」欄位可以拿來當標記的初始值：只 set/merge，不刪除，
-// 這樣才不會把使用者之後手動改過的其他品項標記洗掉（跟其他 collection 的整批覆蓋不一樣）。
-// records: [{ itemCode, tag }]
-export async function importItemTagsFromReference(records) {
+// 組合檔「參照(新)」分頁可以整批匯入當初始值：只 set/merge，不刪除，
+// 這樣才不會把使用者之後手動改過的其他品項資料洗掉（跟其他 collection 的整批覆蓋不一樣）。
+// records: [{ itemCode, itemName, origin, unit, purchaseType, category, majorCategory,
+//             netWeight, grossWeight, companyType, tag, isSplit, note }]
+export async function importItemReferenceFromMaster(records) {
   const chunks = [];
   const remaining = [...records];
   while (remaining.length) chunks.push(remaining.splice(0, 450));
   for (const chunk of chunks) {
     const batch = writeBatch(db);
     chunk.forEach(r => {
-      const ref = doc(db, 'itemTags', sanitizeIdPart(r.itemCode));
-      batch.set(ref, { itemCode: r.itemCode, tag: r.tag, updatedAt: Date.now() }, { merge: true });
+      const ref = doc(db, 'itemReference', sanitizeIdPart(r.itemCode));
+      batch.set(ref, { ...r, updatedAt: Date.now() }, { merge: true });
     });
     await batch.commit();
   }
