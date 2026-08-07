@@ -658,7 +658,8 @@ function firstSheet(wb) {
 }
 
 // 庫存.xlsx：品號/品名/庫別名稱/庫存數量/庫存金額/單位成本/庫存包裝數量
-// 庫別名稱可能是「泰山廠區」「台中庫」（實體倉庫）或「廠務」；有些列是合併儲存格延續列，品號會是空的，直接跳過。
+// 庫別名稱可能是「泰山廠區」「台中庫」（實體倉庫）或「廠務」；有些列是合併儲存格延續列，品號會是空的，
+// 檔案最後還有「類別:」「會計科目:」這種小計列，品號欄位不是空的但也不是真正的品號，兩種都要排除。
 function parseStockSheet(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   if (!rows.length) return { taishan: [], taichung: [], factory: [] };
@@ -675,7 +676,7 @@ function parseStockSheet(sheet) {
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const itemCode = (row[idxCode] || '').toString().trim();
-    if (!itemCode) continue;
+    if (!isRealItemCode(itemCode)) continue;
     const itemName = idxName !== -1 ? (row[idxName] || '').toString().trim() : '';
     const whRaw = (row[idxWh] || '').toString().trim();
     const qty = Number(row[idxQty]) || 0;
@@ -704,7 +705,7 @@ function parseConsignmentSheet(sheet) {
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const itemCode = (row[idxCode] || '').toString().trim();
-    if (!itemCode) continue;
+    if (!isRealItemCode(itemCode)) continue;
     records.push({
       itemCode,
       itemName: idxName !== -1 ? (row[idxName] || '').toString().trim() : '',
@@ -733,7 +734,7 @@ function parseBatchListSheet(sheet) {
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const itemCode = (row[idxCode] || '').toString().trim();
-    if (!itemCode) continue;
+    if (!isRealItemCode(itemCode)) continue;
     const warehouse = normalizeWarehouse(row[idxWh]);
     if (!warehouse) continue;
     records.push({
