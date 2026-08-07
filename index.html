@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <header class="site-header">
@@ -34,6 +34,7 @@
       <div class="tab-row" id="tabRow">
         <button type="button" class="tab-btn active" data-tab="search">品項查詢</button>
         <button type="button" class="tab-btn" data-tab="factory">廠務物料</button>
+        <button type="button" class="tab-btn" data-tab="availableMaterial">可用原料(泰山)</button>
         <button type="button" class="tab-btn" data-tab="summary">彙總</button>
         <button type="button" class="tab-btn" data-tab="batch">批號</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
@@ -69,8 +70,13 @@
               <tbody id="factoryMaterialTableBody"></tbody>
             </table>
           </div>
+        </div>
+      </section>
 
-          <h2 style="margin-top:24px;">可用原料（泰山）</h2>
+      <!-- 可用原料（泰山）（廠務角色專用，跟廠務物料同一組角色可視範圍，但是獨立分頁） -->
+      <section id="tabAvailableMaterial" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>可用原料（泰山）</h2>
           <p class="hint-text">就是泰山的庫存，批號即時去對批號.xlsx（泰山廠區）查出來。標記（原料/成品/半成品...）ERP 沒有這份資料，直接在下面表格編輯，改完自動存檔。</p>
           <div class="table-scroll">
             <table class="data-table">
@@ -196,6 +202,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>
