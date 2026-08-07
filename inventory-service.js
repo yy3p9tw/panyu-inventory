@@ -131,7 +131,8 @@ export function subscribeToFactoryMaterial(callback, onError) {
   return subscribeToCollection('factoryMaterial', callback, onError);
 }
 
-// records: [{ itemCode, itemName, qty }] — 批號是在畫面上跟 batchList 即時對出來的，不存在這裡
+// records: [{ itemCode, itemName, qty, nearestExpiry }] — nearestExpiry 是組合檔「廠務用料」分頁自己算好的最短效期，
+// 批號明細另外在畫面上跟 batchList（廠務）即時對出來，不存在這裡
 export async function replaceFactoryMaterial(records) {
   const docs = records.map(r => ({
     id: sanitizeIdPart(r.itemCode),
@@ -139,30 +140,33 @@ export async function replaceFactoryMaterial(records) {
       itemCode: r.itemCode,
       itemName: r.itemName,
       qty: r.qty || 0,
+      nearestExpiry: r.nearestExpiry || '',
       updatedAt: Date.now()
     }
   }));
   return replaceWholeCollection('factoryMaterial', docs);
 }
 
-// 可用原料(泰山) 不再是自己匯入的一份資料——它其實就是泰山的庫存+批號，
-// 畫面上即時組出來，只差一個「標記」欄位，來源是下面這個 itemReference（參照表）。
-
-export function subscribeToItemReference(callback, onError) {
-  return subscribeToCollection('itemReference', callback, onError);
+export function subscribeToAvailableMaterial(callback, onError) {
+  return subscribeToCollection('availableMaterial', callback, onError);
 }
 
-// records: [{ itemCode, tag }]
-export async function replaceItemReference(records) {
+// records: [{ itemCode, itemName, qty, batchNo, expired, tag }] —
+// 這幾個欄位組合檔的「可用原料(泰山)」分頁自己都算好了，一列就是一筆，不用再組合
+export async function replaceAvailableMaterial(records) {
   const docs = records.map(r => ({
     id: sanitizeIdPart(r.itemCode),
     data: {
       itemCode: r.itemCode,
+      itemName: r.itemName,
+      qty: r.qty || 0,
+      batchNo: r.batchNo || '',
+      expired: r.expired || '',
       tag: r.tag || '',
       updatedAt: Date.now()
     }
   }));
-  return replaceWholeCollection('itemReference', docs);
+  return replaceWholeCollection('availableMaterial', docs);
 }
 
 // ---------- 批號：每次匯入完全覆蓋 ----------

@@ -60,22 +60,22 @@
       <section id="tabFactory" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>廠務用料</h2>
-          <p class="hint-text">品名、數量、批號。庫存.xlsx 裡庫別=廠務的部分，批號是即時去對批號.xlsx（泰山廠區）查出來的。</p>
+          <p class="hint-text">品名、數量、最短效期，來源是組合檔裡的「廠務用料」分頁，一比一照抄。批號明細另外用批號.xlsx（廠務）即時對出來。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>品名</th><th>數量</th><th>批號</th></tr>
+                <tr><th>品名</th><th>數量</th><th>最短效期</th><th>批號</th></tr>
               </thead>
               <tbody id="factoryMaterialTableBody"></tbody>
             </table>
           </div>
 
           <h2 style="margin-top:24px;">可用原料（泰山）</h2>
-          <p class="hint-text">品名、數量、批號、標記（有值才顯示，來源是組合檔裡的參照表）。就是泰山的庫存，過期/報廢目前沒有真實資料來源。</p>
+          <p class="hint-text">品名、數量、批號、過期/報廢、標記，來源是組合檔裡的「可用原料(泰山)」分頁，一比一照抄。</p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>品名</th><th>數量</th><th>批號</th><th>標記</th></tr>
+                <tr><th>品名</th><th>數量</th><th>批號</th><th>過期/報廢</th><th>標記</th></tr>
               </thead>
               <tbody id="availableMaterialTableBody"></tbody>
             </table>
