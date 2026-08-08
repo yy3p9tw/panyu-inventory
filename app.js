@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=11';
+import { auth } from './firebase-config.js?v=12';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,8 +16,8 @@ import {
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=11';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=11';
+} from './inventory-service.js?v=12';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=12';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -377,7 +377,7 @@ function renderBatchCell(batches) {
   const shortest = sorted[0];
   if (sorted.length === 1) return escapeHTML(shortest.batchNo);
   const restText = sorted.slice(1).map(b => b.batchNo).join('、');
-  return `${escapeHTML(shortest.batchNo)} <details style="display:inline-block;"><summary style="display:inline; cursor:pointer; color:var(--color-primary);">還有 ${sorted.length - 1} 筆</summary>${escapeHTML(restText)}</details>`;
+  return `${escapeHTML(shortest.batchNo)} <details style="display:inline-block;"><summary style="display:inline; cursor:pointer; color:var(--color-primary);">共 ${sorted.length} 筆</summary>${escapeHTML(restText)}</details>`;
 }
 
 // lockInfo: { total, entries: [{tag, lockedQty, remark}] } | undefined —鎖庫純粹當資訊標籤顯示，
