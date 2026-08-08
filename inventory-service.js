@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=16';
+import { db } from './firebase-config.js?v=17';
 import {
   collection,
   onSnapshot,
@@ -327,13 +327,13 @@ export async function deleteLockedStock(id) {
 // 使用者要留存「當天最終結果」的歷史記錄，用「今天完成」按鈕手動存檔（不是每次匯入自動存，
 // 因為當天可能匯入好幾次還沒定案）。一個日期一種資料類型各自一份文件，避免單一文件塞太多資料。
 
-const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments'];
+const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock'];
 
 function snapshotDocId(date, type) {
   return `${date}__${type}`;
 }
 
-// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments }（畫面上目前訂閱到的即時資料）
+// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments, lockedStock }（畫面上目前訂閱到的即時資料）
 export async function saveDailySnapshot(date, data) {
   const batch = writeBatch(db);
   SNAPSHOT_TYPES.forEach(type => {

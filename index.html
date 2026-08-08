@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=17" />
 </head>
 <body>
   <header class="site-header">
@@ -262,7 +262,7 @@
 
           <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--color-border);">
             <h2>今天的資料存檔了嗎？</h2>
-            <p class="hint-text">今天所有檔案都匯入完、確定是最終版本之後，按下面這個按鈕，系統會把今天的庫存/批號/寄庫/廠務用料/未核完調整存成一份快照，之後可以到「歷史」分頁按日期查回來看。按第二次會覆蓋今天已經存過的快照（用最新的版本）。</p>
+            <p class="hint-text">今天所有檔案都匯入完、確定是最終版本之後，按下面這個按鈕，系統會把今天的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成一份快照，之後可以到「歷史」分頁按日期查回來看。按第二次會覆蓋今天已經存過的快照（用最新的版本）。</p>
             <button type="button" id="saveSnapshotBtn">今天完成，存檔今日快照</button>
             <p class="hint-text" id="saveSnapshotMsg"></p>
           </div>
@@ -287,6 +287,7 @@
                 <option value="consignment">寄庫</option>
                 <option value="factoryMaterial">廠務用料</option>
                 <option value="pendingAdjustments">未核完調整</option>
+                <option value="lockedStock">鎖庫</option>
               </select>
             </label>
             <button type="button" id="historyLoadBtn">查詢</button>
@@ -326,6 +327,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=16"></script>
+  <script type="module" src="app.js?v=17"></script>
 </body>
 </html>

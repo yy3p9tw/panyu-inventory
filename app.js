@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=16';
+import { auth } from './firebase-config.js?v=17';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -17,8 +17,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=16';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=16';
+} from './inventory-service.js?v=17';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=17';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -1457,7 +1457,7 @@ function todayDateString() {
 
 saveSnapshotBtn.addEventListener('click', async () => {
   const date = todayDateString();
-  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
+  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
   saveSnapshotBtn.disabled = true;
   saveSnapshotMsg.textContent = '存檔中...';
   try {
@@ -1466,7 +1466,8 @@ saveSnapshotBtn.addEventListener('click', async () => {
       batchList: currentBatchList,
       consignment: currentConsignment,
       factoryMaterial: currentFactoryMaterial,
-      pendingAdjustments: currentPendingAdjustments
+      pendingAdjustments: currentPendingAdjustments,
+      lockedStock: currentLockedStock
     });
     saveSnapshotMsg.textContent = `已存檔 ${date} 的快照，可以到「歷史」分頁查詢。`;
   } catch (err) {
@@ -1496,6 +1497,10 @@ const HISTORY_VIEWS = {
   pendingAdjustments: { columns: [
     { key: 'itemCode', label: '品號' }, { key: 'warehouse', label: '倉庫' },
     { key: 'deltaQty', label: '調整量' }, { key: 'source', label: '來源' }
+  ] },
+  lockedStock: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'warehouse', label: '倉庫' },
+    { key: 'tag', label: '標籤' }, { key: 'lockedQty', label: '鎖庫數量' }, { key: 'remark', label: '備註' }
   ] }
 };
 
