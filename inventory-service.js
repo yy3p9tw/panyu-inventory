@@ -1,11 +1,12 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=15';
+import { db } from './firebase-config.js?v=16';
 import {
   collection,
   onSnapshot,
   doc,
+  getDoc,
   setDoc,
   addDoc,
   deleteDoc,
@@ -319,4 +320,36 @@ export async function updateLockedStock(id, record) {
 
 export async function deleteLockedStock(id) {
   await deleteDoc(doc(db, 'lockedStock', id));
+}
+
+// ---------- 每日快照：手動存檔「今天最終版本」，之後可以按日期回頭查 ----------
+// 每天匯入的資料（庫存/批號/寄庫/廠務用料/未核完調整）都是整批覆蓋，舊的一天過去就消失了。
+// 使用者要留存「當天最終結果」的歷史記錄，用「今天完成」按鈕手動存檔（不是每次匯入自動存，
+// 因為當天可能匯入好幾次還沒定案）。一個日期一種資料類型各自一份文件，避免單一文件塞太多資料。
+
+const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments'];
+
+function snapshotDocId(date, type) {
+  return `${date}__${type}`;
+}
+
+// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments }（畫面上目前訂閱到的即時資料）
+export async function saveDailySnapshot(date, data) {
+  const batch = writeBatch(db);
+  SNAPSHOT_TYPES.forEach(type => {
+    const ref = doc(db, 'dailySnapshots', snapshotDocId(date, type));
+    batch.set(ref, { date, type, records: data[type] || [], savedAt: Date.now() });
+  });
+  await batch.commit();
+}
+
+// 回傳 { stock, batchList, consignment, factoryMaterial, pendingAdjustments }，
+// 某個類型那天沒存過快照就是 null（跟「有存但是空陣列」分開，畫面上可以分辨兩種情況）
+export async function loadDailySnapshot(date) {
+  const result = {};
+  for (const type of SNAPSHOT_TYPES) {
+    const snap = await getDoc(doc(db, 'dailySnapshots', snapshotDocId(date, type)));
+    result[type] = snap.exists() ? (snap.data().records || []) : null;
+  }
+  return result;
 }

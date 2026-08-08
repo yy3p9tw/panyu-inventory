@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=15" />
+  <link rel="stylesheet" href="style.css?v=16" />
 </head>
 <body>
   <header class="site-header">
@@ -43,6 +43,7 @@
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
         <button type="button" class="tab-btn" data-tab="raw">原始資料</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
+        <button type="button" class="tab-btn" data-tab="history">歷史</button>
         <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
       </div>
 
@@ -258,6 +259,45 @@
           </div>
           <p class="hint-text" id="importMsg"></p>
           <div id="importItemsList"></div>
+
+          <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--color-border);">
+            <h2>今天的資料存檔了嗎？</h2>
+            <p class="hint-text">今天所有檔案都匯入完、確定是最終版本之後，按下面這個按鈕，系統會把今天的庫存/批號/寄庫/廠務用料/未核完調整存成一份快照，之後可以到「歷史」分頁按日期查回來看。按第二次會覆蓋今天已經存過的快照（用最新的版本）。</p>
+            <button type="button" id="saveSnapshotBtn">今天完成，存檔今日快照</button>
+            <p class="hint-text" id="saveSnapshotMsg"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 歷史（按日期查回頭看某一天的最終快照） -->
+      <section id="tabHistory" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>歷史</h2>
+          <p class="hint-text">查某一天按下「今天完成」時存的快照，唯讀，不能編輯。沒存過快照的日期會顯示查無資料。</p>
+          <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              日期
+              <input type="date" id="historyDateInput" style="padding:6px 8px;" />
+            </label>
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              資料種類
+              <select id="historyTypeSelect" style="padding:6px 8px;">
+                <option value="stock">庫存（泰山/台中）</option>
+                <option value="batchList">批號</option>
+                <option value="consignment">寄庫</option>
+                <option value="factoryMaterial">廠務用料</option>
+                <option value="pendingAdjustments">未核完調整</option>
+              </select>
+            </label>
+            <button type="button" id="historyLoadBtn">查詢</button>
+          </div>
+          <p class="hint-text" id="historyCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead id="historyTableHead"></thead>
+              <tbody id="historyTableBody"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -286,6 +326,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=15"></script>
+  <script type="module" src="app.js?v=16"></script>
 </body>
 </html>

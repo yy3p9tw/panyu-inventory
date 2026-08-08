@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=15';
+import { auth } from './firebase-config.js?v=16';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -15,9 +15,10 @@ import {
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
+  saveDailySnapshot, loadDailySnapshot,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=15';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=15';
+} from './inventory-service.js?v=16';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=16';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -42,6 +43,15 @@ const importDropZone = document.getElementById('importDropZone');
 const importFileInput = document.getElementById('importFileInput');
 const importMsg = document.getElementById('importMsg');
 const importItemsList = document.getElementById('importItemsList');
+const saveSnapshotBtn = document.getElementById('saveSnapshotBtn');
+const saveSnapshotMsg = document.getElementById('saveSnapshotMsg');
+
+const historyDateInput = document.getElementById('historyDateInput');
+const historyTypeSelect = document.getElementById('historyTypeSelect');
+const historyLoadBtn = document.getElementById('historyLoadBtn');
+const historyCount = document.getElementById('historyCount');
+const historyTableHead = document.getElementById('historyTableHead');
+const historyTableBody = document.getElementById('historyTableBody');
 
 const usersTableBody = document.getElementById('usersTableBody');
 
@@ -230,6 +240,7 @@ function applyRoleVisibility() {
   const lockedStockBtn = document.querySelector('.tab-btn[data-tab="lockedStock"]');
   const rawBtn = document.querySelector('.tab-btn[data-tab="raw"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
+  const historyBtn = document.querySelector('.tab-btn[data-tab="history"]');
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
 
   const canSeeStock = visibleWarehouses.length > 0;
@@ -244,6 +255,7 @@ function applyRoleVisibility() {
   lockedStockBtn.style.display = canSeeStock ? '' : 'none';
   rawBtn.style.display = isAdmin ? '' : 'none';
   importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary || isAdmin) ? '' : 'none';
+  historyBtn.style.display = (canSeeStock || canSeeFactory) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
 
   // 如果目前開著的分頁被隱藏了，自動切到第一個看得到的分頁
@@ -1433,4 +1445,92 @@ importFileInput.addEventListener('change', () => {
   const file = importFileInput.files[0];
   if (file) handleFileSelected(file);
   importFileInput.value = '';
+});
+
+// ---------- 今日快照：手動存檔「今天完成」的最終版本 ----------
+
+function todayDateString() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+saveSnapshotBtn.addEventListener('click', async () => {
+  const date = todayDateString();
+  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
+  saveSnapshotBtn.disabled = true;
+  saveSnapshotMsg.textContent = '存檔中...';
+  try {
+    await saveDailySnapshot(date, {
+      stock: currentStock,
+      batchList: currentBatchList,
+      consignment: currentConsignment,
+      factoryMaterial: currentFactoryMaterial,
+      pendingAdjustments: currentPendingAdjustments
+    });
+    saveSnapshotMsg.textContent = `已存檔 ${date} 的快照，可以到「歷史」分頁查詢。`;
+  } catch (err) {
+    saveSnapshotMsg.textContent = '存檔失敗：' + err.message;
+  } finally {
+    saveSnapshotBtn.disabled = false;
+  }
+});
+
+// ---------- 歷史：按日期查詢快照，唯讀 ----------
+
+const HISTORY_VIEWS = {
+  stock: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' },
+    { key: 'warehouse', label: '倉庫' }, { key: 'qty', label: '庫存' }
+  ] },
+  batchList: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' },
+    { key: 'warehouse', label: '庫別' }, { key: 'batchNo', label: '批號' }, { key: 'qty', label: '包裝數量' }
+  ] },
+  consignment: { columns: [
+    { key: 'customer', label: '客戶' }, { key: 'itemName', label: '品名' }, { key: 'qty', label: '寄庫數量' }
+  ] },
+  factoryMaterial: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'qty', label: '數量' }
+  ] },
+  pendingAdjustments: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'warehouse', label: '倉庫' },
+    { key: 'deltaQty', label: '調整量' }, { key: 'source', label: '來源' }
+  ] }
+};
+
+historyLoadBtn.addEventListener('click', async () => {
+  const date = historyDateInput.value;
+  const type = historyTypeSelect.value;
+  if (!date) {
+    alert('請先選日期');
+    return;
+  }
+  historyLoadBtn.disabled = true;
+  historyCount.textContent = '查詢中...';
+  historyTableHead.innerHTML = '';
+  historyTableBody.innerHTML = '';
+  try {
+    const snapshot = await loadDailySnapshot(date);
+    const records = snapshot[type];
+    const view = HISTORY_VIEWS[type];
+    historyTableHead.innerHTML = `<tr>${view.columns.map(c => `<th>${c.label}</th>`).join('')}</tr>`;
+    if (records === null) {
+      historyCount.textContent = `${date} 沒有存過「${historyTypeSelect.options[historyTypeSelect.selectedIndex].text}」的快照`;
+      historyTableBody.innerHTML = `<tr><td colspan="${view.columns.length}" style="text-align:center; color:#6b7280;">查無資料</td></tr>`;
+      return;
+    }
+    historyCount.textContent = `${date} 共 ${records.length} 筆`;
+    if (!records.length) {
+      historyTableBody.innerHTML = `<tr><td colspan="${view.columns.length}" style="text-align:center; color:#6b7280;">這份快照是空的</td></tr>`;
+      return;
+    }
+    historyTableBody.innerHTML = records.map(r => `
+      <tr>${view.columns.map(c => `<td>${escapeHTML(r[c.key] ?? '')}</td>`).join('')}</tr>
+    `).join('');
+  } catch (err) {
+    historyCount.textContent = '查詢失敗：' + err.message;
+  } finally {
+    historyLoadBtn.disabled = false;
+  }
 });
