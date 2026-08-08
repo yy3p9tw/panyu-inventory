@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=10';
+import { auth } from './firebase-config.js?v=11';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,8 +16,8 @@ import {
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=10';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=10';
+} from './inventory-service.js?v=11';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=11';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -369,14 +369,6 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
-function formatExpiry(raw) {
-  if (!raw) return '-';
-  const s = String(raw).trim();
-  const m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (m) return `${m[1]}/${m[2]}/${m[3]}`;
-  return s;
-}
-
 // 批號是 YYYYMMDD，字串排序就是時間排序。只顯示最短（最早到期）那個批號，
 // 同品項其他批號收在「還有 N 筆」點開才看得到，不要一次全部列出來。
 function renderBatchCell(batches) {
@@ -389,8 +381,9 @@ function renderBatchCell(batches) {
 }
 
 // lockInfo: { total, entries: [{tag, lockedQty, remark}] } | undefined —鎖庫純粹當資訊標籤顯示，
-// 不會拿去扣庫存數字（組合檔自己的「結存數量」也不是即時算的，是鎖庫當下手動記的快照，見鎖庫分頁）
-function renderQtyCell(s, adjustment, batches, lockInfo) {
+// 不會拿去扣庫存數字（組合檔自己的「結存數量」也不是即時算的，是鎖庫當下手動記的快照，見鎖庫分頁）。
+// 批號另外用 renderBatchCell 顯示在「最短效期」欄位，這裡不重複顯示批號badge。
+function renderQtyCell(s, adjustment, lockInfo) {
   const badges = [];
   if (lockInfo && lockInfo.total) {
     const title = lockInfo.entries.map(e => `${e.tag || '(無標籤)'} ${e.lockedQty}${e.remark ? '：' + e.remark : ''}`).join('\n');
@@ -398,13 +391,6 @@ function renderQtyCell(s, adjustment, batches, lockInfo) {
   }
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
-  if (batches && batches.length) {
-    const sorted = [...batches].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''));
-    const shortest = sorted[0];
-    const extra = sorted.length - 1;
-    const title = sorted.map(b => b.batchNo).join('\n');
-    badges.push(`<span class="badge badge-batch" title="${escapeHTML(title)}">批號 ${escapeHTML(shortest.batchNo)}${extra ? ` +${extra}` : ''}</span>`);
-  }
   const displayQty = s.qty + (adjustment || 0);
   if (adjustment) {
     badges.push(`<span class="badge badge-pending" title="銷貨/異動/調撥裡還沒核完的部分">未核完 ${adjustment > 0 ? '+' : ''}${adjustment}</span>`);
@@ -479,8 +465,8 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     <tr>
       <td>${escapeHTML(s.itemCode)}</td>
       <td>${escapeHTML(s.itemName)}</td>
-      <td>${renderQtyCell(s, adjustment, batches, lockInfo)}</td>
-      <td>${formatExpiry(s.nearestExpiry)}</td>
+      <td>${renderQtyCell(s, adjustment, lockInfo)}</td>
+      <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
   }).join('');
