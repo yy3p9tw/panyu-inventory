@@ -1,12 +1,14 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=9';
+import { db } from './firebase-config.js?v=10';
 import {
   collection,
   onSnapshot,
   doc,
   setDoc,
+  addDoc,
+  deleteDoc,
   writeBatch,
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
@@ -293,4 +295,28 @@ export async function replaceSummary(records) {
     }
   }));
   return replaceWholeCollection('summary', docs);
+}
+
+// ---------- 鎖庫：ERP 沒有這份資料，是老闆口頭決定要鎖起來的品項，人工維護 ----------
+// 同一個品項可以同時有好幾筆鎖庫紀錄（例如同一品項一部分鎖給不同客戶/廠務），
+// 所以不是「品號+倉庫」對一筆，而是每筆自己一個文件（用 Firestore 自動 ID），
+// 可以隨時新增/編輯/刪除單一筆，不是整批匯入覆蓋。
+
+export function subscribeToLockedStock(callback, onError) {
+  return subscribeToCollection('lockedStock', callback, onError);
+}
+
+// record: { itemCode, itemName, warehouse, tag, lockedQty, remark }
+// warehouse：泰山或台中，決定這筆鎖庫算在哪個倉庫的庫存標籤上
+// tag：對應組合檔「鎖庫」分頁的「庫別名稱」細分——客戶名字、"廠務鎖庫"，或留空代表就是倉庫本身的貨
+export async function addLockedStock(record) {
+  await addDoc(collection(db, 'lockedStock'), { ...record, updatedAt: Date.now() });
+}
+
+export async function updateLockedStock(id, record) {
+  await setDoc(doc(db, 'lockedStock', id), { ...record, updatedAt: Date.now() }, { merge: true });
+}
+
+export async function deleteLockedStock(id) {
+  await deleteDoc(doc(db, 'lockedStock', id));
 }

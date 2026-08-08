@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=9';
+import { auth } from './firebase-config.js?v=10';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -14,9 +14,10 @@ import {
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
   subscribeToPendingAdjustments, replacePendingAdjustments,
+  subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=9';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=9';
+} from './inventory-service.js?v=10';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=10';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -63,6 +64,15 @@ const consignmentSearchInput = document.getElementById('consignmentSearchInput')
 const consignmentTableBody = document.getElementById('consignmentTableBody');
 const consignmentCount = document.getElementById('consignmentCount');
 
+const lockedStockNewCode = document.getElementById('lockedStockNewCode');
+const lockedStockNewWarehouse = document.getElementById('lockedStockNewWarehouse');
+const lockedStockNewTag = document.getElementById('lockedStockNewTag');
+const lockedStockNewQty = document.getElementById('lockedStockNewQty');
+const lockedStockNewRemark = document.getElementById('lockedStockNewRemark');
+const lockedStockAddBtn = document.getElementById('lockedStockAddBtn');
+const lockedStockCount = document.getElementById('lockedStockCount');
+const lockedStockTableBody = document.getElementById('lockedStockTableBody');
+
 const rawSheetSelect = document.getElementById('rawSheetSelect');
 const rawTableBody = document.getElementById('rawTableBody');
 const rawCount = document.getElementById('rawCount');
@@ -92,6 +102,7 @@ let currentSummary = [];
 let currentBatchList = [];
 let currentConsignment = [];
 let currentPendingAdjustments = [];
+let currentLockedStock = [];
 let currentRawImport = [];
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
@@ -102,6 +113,7 @@ let unsubscribeSummary = null;
 let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
 let unsubscribePendingAdjustments = null;
+let unsubscribeLockedStock = null;
 let unsubscribeRawImport = null;
 
 // ---------- 登入 ----------
@@ -146,6 +158,7 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
   if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
+  if (unsubscribeLockedStock) { unsubscribeLockedStock(); unsubscribeLockedStock = null; }
   if (unsubscribeRawImport) { unsubscribeRawImport(); unsubscribeRawImport = null; }
   currentRoles = [];
   currentStock = [];
@@ -157,6 +170,7 @@ onAuthStateChanged(auth, async user => {
   currentBatchList = [];
   currentConsignment = [];
   currentPendingAdjustments = [];
+  currentLockedStock = [];
   applyRoleVisibility(); // 立刻把畫面收回「沒有任何角色」狀態，避免短暫殘留上一個帳號看到的東西
 
   if (user) {
@@ -213,6 +227,7 @@ function applyRoleVisibility() {
   const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
   const batchBtn = document.querySelector('.tab-btn[data-tab="batch"]');
   const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
+  const lockedStockBtn = document.querySelector('.tab-btn[data-tab="lockedStock"]');
   const rawBtn = document.querySelector('.tab-btn[data-tab="raw"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
@@ -226,6 +241,7 @@ function applyRoleVisibility() {
   summaryBtn.style.display = canSeeSummary ? '' : 'none';
   batchBtn.style.display = canSeeStock ? '' : 'none';
   consignmentBtn.style.display = canSeeStock ? '' : 'none';
+  lockedStockBtn.style.display = canSeeStock ? '' : 'none';
   rawBtn.style.display = isAdmin ? '' : 'none';
   importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary || isAdmin) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
@@ -317,11 +333,19 @@ function applyRoleVisibility() {
       renderTaichungTable();
       renderConsignmentTable();
     });
+    unsubscribeLockedStock = subscribeToLockedStock(rows => {
+      currentLockedStock = rows;
+      renderLockedStockTable();
+      renderTaishanTable();
+      renderTaichungTable();
+    });
   } else if (!canSeeStock && unsubscribeConsignment) {
     unsubscribeConsignment(); unsubscribeConsignment = null;
     unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
+    unsubscribeLockedStock(); unsubscribeLockedStock = null;
     currentConsignment = [];
     currentPendingAdjustments = [];
+    currentLockedStock = [];
   }
 }
 
@@ -364,9 +388,14 @@ function renderBatchCell(batches) {
   return `${escapeHTML(shortest.batchNo)} <details style="display:inline-block;"><summary style="display:inline; cursor:pointer; color:var(--color-primary);">還有 ${sorted.length - 1} 筆</summary>${escapeHTML(restText)}</details>`;
 }
 
-function renderQtyCell(s, adjustment, batches) {
+// lockInfo: { total, entries: [{tag, lockedQty, remark}] } | undefined —鎖庫純粹當資訊標籤顯示，
+// 不會拿去扣庫存數字（組合檔自己的「結存數量」也不是即時算的，是鎖庫當下手動記的快照，見鎖庫分頁）
+function renderQtyCell(s, adjustment, batches, lockInfo) {
   const badges = [];
-  if (s.lockedQty) badges.push(`<span class="badge badge-locked" title="鎖庫前結存：${s.qtyBeforeLock ?? '-'}">鎖庫 ${s.lockedQty}</span>`);
+  if (lockInfo && lockInfo.total) {
+    const title = lockInfo.entries.map(e => `${e.tag || '(無標籤)'} ${e.lockedQty}${e.remark ? '：' + e.remark : ''}`).join('\n');
+    badges.push(`<span class="badge badge-locked" title="${escapeHTML(title)}">鎖庫 ${lockInfo.total}</span>`);
+  }
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
   if (batches && batches.length) {
@@ -408,6 +437,16 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     batchesByCode.get(b.itemCode).push({ batchNo: b.batchNo, qty: b.qty });
   });
 
+  // 品號 -> 鎖庫加總（同一品項可能有好幾筆鎖庫紀錄，分別鎖給不同客戶/廠務）
+  const lockByCode = new Map();
+  currentLockedStock.forEach(l => {
+    if (l.warehouse !== warehouse) return;
+    if (!lockByCode.has(l.itemCode)) lockByCode.set(l.itemCode, { total: 0, entries: [] });
+    const info = lockByCode.get(l.itemCode);
+    info.total += Number(l.lockedQty) || 0;
+    info.entries.push({ tag: l.tag, lockedQty: l.lockedQty, remark: l.remark });
+  });
+
   let items = currentStock.filter(s => {
     if (s.warehouse !== warehouse) return false;
     if (applyTaishanHideRule && s.hiddenFromTaishanManager) return false;
@@ -435,11 +474,12 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   tableBody.innerHTML = items.map(s => {
     const adjustment = adjustmentByCode.get(s.itemCode);
     const batches = batchesByCode.get(s.itemCode);
+    const lockInfo = lockByCode.get(s.itemCode);
     return `
     <tr>
       <td>${escapeHTML(s.itemCode)}</td>
       <td>${escapeHTML(s.itemName)}</td>
-      <td>${renderQtyCell(s, adjustment, batches)}</td>
+      <td>${renderQtyCell(s, adjustment, batches, lockInfo)}</td>
       <td>${formatExpiry(s.nearestExpiry)}</td>
     </tr>
   `;
@@ -738,6 +778,88 @@ function renderConsignmentTable() {
 }
 
 consignmentSearchInput.addEventListener('input', renderConsignmentTable);
+
+// ---------- 鎖庫（ERP 沒有這份資料，人工維護，逐筆新增/編輯/刪除） ----------
+
+function renderLockedStockTable() {
+  const items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+  lockedStockCount.textContent = items.length ? `共 ${items.length} 筆` : '目前沒有鎖庫中的品項';
+
+  if (items.length === 0) {
+    lockedStockTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    return;
+  }
+
+  lockedStockTableBody.innerHTML = items.map(r => `
+    <tr data-id="${escapeHTML(r.id)}">
+      <td><input type="text" class="lock-field-input" data-field="itemCode" value="${escapeHTML(r.itemCode || '')}" style="width:110px; padding:4px 6px;" /></td>
+      <td><input type="text" class="lock-field-input" data-field="itemName" value="${escapeHTML(r.itemName || '')}" style="width:140px; padding:4px 6px;" /></td>
+      <td>
+        <select class="lock-field-input" data-field="warehouse" style="padding:4px 6px;">
+          <option value="泰山"${r.warehouse === '泰山' ? ' selected' : ''}>泰山</option>
+          <option value="台中"${r.warehouse === '台中' ? ' selected' : ''}>台中</option>
+        </select>
+      </td>
+      <td><input type="text" class="lock-field-input" data-field="tag" value="${escapeHTML(r.tag || '')}" style="width:100px; padding:4px 6px;" /></td>
+      <td><input type="text" class="lock-field-input" data-field="lockedQty" value="${escapeHTML(String(r.lockedQty ?? ''))}" style="width:70px; padding:4px 6px;" /></td>
+      <td><input type="text" class="lock-field-input" data-field="remark" value="${escapeHTML(r.remark || '')}" style="width:120px; padding:4px 6px;" /></td>
+      <td><button type="button" class="secondary lock-delete-btn">刪除</button></td>
+    </tr>
+  `).join('');
+}
+
+// 每一欄失焦時只存那一欄，不用整批儲存
+lockedStockTableBody.addEventListener('change', async e => {
+  if (!e.target.classList.contains('lock-field-input')) return;
+  const row = e.target.closest('tr');
+  const id = row.dataset.id;
+  const field = e.target.dataset.field;
+  let value = e.target.value.trim();
+  if (field === 'lockedQty') value = Number(value) || 0;
+  try {
+    await updateLockedStock(id, { [field]: value });
+  } catch (err) {
+    alert('儲存失敗：' + err.message);
+  }
+});
+
+lockedStockTableBody.addEventListener('click', async e => {
+  if (!e.target.classList.contains('lock-delete-btn')) return;
+  const row = e.target.closest('tr');
+  const id = row.dataset.id;
+  if (!confirm('確定要刪除這筆鎖庫紀錄嗎？')) return;
+  try {
+    await deleteLockedStock(id);
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
+  }
+});
+
+lockedStockAddBtn.addEventListener('click', async () => {
+  const itemCode = lockedStockNewCode.value.trim();
+  const warehouse = lockedStockNewWarehouse.value;
+  const tag = lockedStockNewTag.value.trim();
+  const lockedQty = Number(lockedStockNewQty.value) || 0;
+  const remark = lockedStockNewRemark.value.trim();
+  if (!itemCode || !lockedQty) {
+    alert('請輸入品號跟鎖庫數量');
+    return;
+  }
+  // 品名自動從目前的庫存資料找，找不到就留空，之後可以再手動補
+  const matched = currentStock.find(s => s.itemCode === itemCode && s.warehouse === warehouse);
+  const itemName = matched ? matched.itemName : '';
+
+  try {
+    await addLockedStock({ itemCode, itemName, warehouse, tag, lockedQty, remark });
+    lockedStockNewCode.value = '';
+    lockedStockNewTag.value = '';
+    lockedStockNewQty.value = '';
+    lockedStockNewRemark.value = '';
+  } catch (err) {
+    alert('新增失敗：' + err.message);
+  }
+});
 
 // ---------- 原始資料（整份組合檔一比一塞進來的，不解讀欄位意義，管理員專用） ----------
 

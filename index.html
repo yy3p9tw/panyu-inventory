@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
   <header class="site-header">
@@ -40,6 +40,7 @@
         <button type="button" class="tab-btn" data-tab="summary">彙總</button>
         <button type="button" class="tab-btn" data-tab="batch">批號</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
+        <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
         <button type="button" class="tab-btn" data-tab="raw">原始資料</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
         <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
@@ -183,6 +184,51 @@
         </div>
       </section>
 
+      <!-- 鎖庫 -->
+      <section id="tabLockedStock" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>鎖庫</h2>
+          <p class="hint-text">ERP 沒有這份資料，是老闆口頭決定要鎖起來的品項，人工維護。同一個品項可以有好幾筆（分別鎖給不同客戶/廠務），泰山/台中表格會顯示加總後的「鎖庫」標籤，不會拿去扣庫存數字。</p>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; padding:12px; background:var(--color-bg-subtle, #f9fafb); border-radius:8px;">
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              品號
+              <input type="text" id="lockedStockNewCode" placeholder="品號" style="padding:6px 8px; width:150px;" />
+            </label>
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              倉庫
+              <select id="lockedStockNewWarehouse" style="padding:6px 8px;">
+                <option value="泰山">泰山</option>
+                <option value="台中">台中</option>
+              </select>
+            </label>
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              標籤（客戶/廠務，選填）
+              <input type="text" id="lockedStockNewTag" placeholder="例：瓦城T、廠務鎖庫" style="padding:6px 8px; width:150px;" />
+            </label>
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              鎖庫數量
+              <input type="text" id="lockedStockNewQty" placeholder="數量" style="padding:6px 8px; width:90px;" />
+            </label>
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              備註
+              <input type="text" id="lockedStockNewRemark" placeholder="備註（選填）" style="padding:6px 8px; width:150px;" />
+            </label>
+            <button type="button" id="lockedStockAddBtn">新增鎖庫</button>
+          </div>
+
+          <p class="hint-text" id="lockedStockCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>倉庫</th><th>標籤</th><th>鎖庫數量</th><th>備註</th><th></th></tr>
+              </thead>
+              <tbody id="lockedStockTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- 原始資料（整份組合檔一比一塞進來的，不管欄位意義，管理員專用） -->
       <section id="tabRaw" class="tab-panel" style="display:none;">
         <div class="panel">
@@ -240,6 +286,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=9"></script>
+  <script type="module" src="app.js?v=10"></script>
 </body>
 </html>
