@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=13';
+import { auth } from './firebase-config.js?v=14';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,8 +16,8 @@ import {
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=13';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=13';
+} from './inventory-service.js?v=14';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=14';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -432,9 +432,11 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     info.entries.push({ tag: l.tag, lockedQty: l.lockedQty, remark: l.remark });
   });
 
+  // 庫存(含未核完調整)是0的品項不用顯示，列表太多沒意義的0很雜
   let items = currentStock.filter(s => {
     if (s.warehouse !== warehouse) return false;
     if (applyTaishanHideRule && s.hiddenFromTaishanManager) return false;
+    if (s.qty + (adjustmentByCode.get(s.itemCode) || 0) === 0) return false;
     return true;
   });
   if (keyword) {
@@ -445,7 +447,11 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   }
   items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
-  const totalCount = currentStock.filter(s => s.warehouse === warehouse && !(applyTaishanHideRule && s.hiddenFromTaishanManager)).length;
+  const totalCount = currentStock.filter(s =>
+    s.warehouse === warehouse &&
+    !(applyTaishanHideRule && s.hiddenFromTaishanManager) &&
+    s.qty + (adjustmentByCode.get(s.itemCode) || 0) !== 0
+  ).length;
   summaryEl.style.color = '';
   summaryEl.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 個品項，篩選後 ${items.length} 筆` : `共 ${totalCount} 個品項`)
@@ -489,7 +495,9 @@ taichungSearchInput.addEventListener('input', renderTaichungTable);
 // （每個資料類型都對應各自一份 ERP 匯出檔，不靠組合檔的公式）。renderBatchCell 只顯示最短那個，
 // 同品項其他批號收在「還有 N 筆」點開才看得到。
 function renderFactoryMaterialTable() {
-  if (!currentFactoryMaterial.length) {
+  // 數量0的品項不用顯示
+  const withStock = currentFactoryMaterial.filter(r => r.qty !== 0);
+  if (!withStock.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
   }
@@ -500,7 +508,7 @@ function renderFactoryMaterialTable() {
     batchesByCode.get(b.itemCode).push(b);
   });
 
-  const sorted = [...currentFactoryMaterial].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  const sorted = [...withStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     return `
@@ -517,7 +525,8 @@ function renderFactoryMaterialTable() {
 // 標記欄位讀 itemReference collection 的 tag 欄位，唯讀顯示——要改標記到「參照」分頁改，不要在這裡重複編輯。
 // 過期/報廢沒有可靠來源（原始資料裡一直是空的），不顯示。
 function renderAvailableMaterialTable() {
-  const taishanStock = currentStock.filter(s => s.warehouse === '泰山');
+  // 庫存0的品項不用顯示
+  const taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0);
   if (!taishanStock.length) {
     availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料，請先到「匯入資料」上傳庫存.xlsx</td></tr>`;
     return;
