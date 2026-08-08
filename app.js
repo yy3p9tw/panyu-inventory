@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=14';
+import { auth } from './firebase-config.js?v=15';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,8 +16,8 @@ import {
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=14';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=14';
+} from './inventory-service.js?v=15';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=15';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -991,9 +991,11 @@ function parseStockSheet(sheet) {
   const idxCode = findColumnIndex(header, ['品號']);
   const idxName = findColumnIndex(header, ['品名']);
   const idxWh = findColumnIndex(header, ['庫別名稱']);
-  const idxQty = findColumnIndex(header, ['庫存數量']);
+  // 跟批號.xlsx/寄庫.xlsx一樣，日常用的是包裝數量（例如一箱12入），不是散裝的庫存數量——
+  // 對照過0805庫存YU的「泰山」分頁，同一列庫存數量=84048、鎖庫前結存=7004，剛好是12入裝的比例（84048/12=7004）。
+  const idxQty = findColumnIndex(header, ['庫存包裝數量', '庫存數量']);
   if (idxCode === -1 || idxWh === -1 || idxQty === -1) {
-    throw new Error('找不到「品號」「庫別名稱」或「庫存數量」欄位，格式可能跟預期不同');
+    throw new Error('找不到「品號」「庫別名稱」或「庫存包裝數量/庫存數量」欄位，格式可能跟預期不同');
   }
 
   const result = { taishan: [], taichung: [], factory: [] };
@@ -1020,9 +1022,11 @@ function parseConsignmentSheet(sheet) {
   const idxCode = findColumnIndex(header, ['品號']);
   const idxName = findColumnIndex(header, ['品名']);
   const idxCustomer = findColumnIndex(header, ['庫別名稱']);
-  const idxQty = findColumnIndex(header, ['庫存數量']);
+  // 跟批號.xlsx一樣，日常用的是包裝數量（例如一箱12入），不是散裝的庫存數量——
+  // 對照過0805庫存YU的「寄庫表」分頁，同一列庫存數量=504、庫存包裝數量=42（12入裝），差12倍。
+  const idxQty = findColumnIndex(header, ['庫存包裝數量', '庫存數量']);
   if (idxCode === -1 || idxCustomer === -1 || idxQty === -1) {
-    throw new Error('找不到「品號」「庫別名稱」或「庫存數量」欄位，格式可能跟預期不同');
+    throw new Error('找不到「品號」「庫別名稱」或「庫存包裝數量/庫存數量」欄位，格式可能跟預期不同');
   }
 
   const records = [];
