@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=17';
+import { auth } from './firebase-config.js?v=18';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -17,8 +17,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=17';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=17';
+} from './inventory-service.js?v=18';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=18';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -1316,7 +1316,9 @@ const IMPORT_ITEMS = [
     label: '異動（未核完調整）',
     matchesFilename: name => name === '異動',
     prepare: wb => parseMovementAdjustments(firstSheet(wb)),
-    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上`,
+    // 就算今天是0筆也要按確認匯入——不按的話，昨天匯入的舊未核完資料不會被清掉，
+    // 會一直留著繼續影響庫存數字（每種未核完調整只有真的按下確認匯入才會清舊資料）
+    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上${records.length === 0 ? '（就算是0筆也要按下面「確認匯入」，才會清掉昨天留下的舊資料）' : ''}`,
     run: async records => {
       const result = await replacePendingAdjustments(records, ['異動']);
       return `已更新異動的未核完調整 ${result.written} 筆`;
@@ -1327,7 +1329,7 @@ const IMPORT_ITEMS = [
     label: '轉撥（未核完調整）',
     matchesFilename: name => name === '轉撥',
     prepare: wb => parseTransferAdjustments(firstSheet(wb)),
-    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上`,
+    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上${records.length === 0 ? '（就算是0筆也要按下面「確認匯入」，才會清掉昨天留下的舊資料）' : ''}`,
     run: async records => {
       const result = await replacePendingAdjustments(records, ['轉撥']);
       return `已更新轉撥的未核完調整 ${result.written} 筆`;
@@ -1338,7 +1340,7 @@ const IMPORT_ITEMS = [
     label: '銷貨（未核完調整）',
     matchesFilename: name => name === '銷貨',
     prepare: wb => parseSalesAdjustments(firstSheet(wb)),
-    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上`,
+    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上${records.length === 0 ? '（就算是0筆也要按下面「確認匯入」，才會清掉昨天留下的舊資料）' : ''}`,
     run: async records => {
       const result = await replacePendingAdjustments(records, ['銷貨']);
       return `已更新銷貨的未核完調整 ${result.written} 筆`;
