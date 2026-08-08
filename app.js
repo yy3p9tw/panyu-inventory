@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=12';
+import { auth } from './firebase-config.js?v=13';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,8 +16,8 @@ import {
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=12';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=12';
+} from './inventory-service.js?v=13';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=13';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -391,10 +391,9 @@ function renderQtyCell(s, adjustment, lockInfo) {
   }
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
+  // 未核完調整還是照樣算進 displayQty（銷貨/異動/調撥裡還沒核准的單據，數字已經扣好/加好了），
+  // 只是不再顯示「未核完」標籤——使用者反應看到這個標籤反而會懷疑數字是不是還沒扣，造成誤會。
   const displayQty = s.qty + (adjustment || 0);
-  if (adjustment) {
-    badges.push(`<span class="badge badge-pending" title="銷貨/異動/調撥裡還沒核完的部分">未核完 ${adjustment > 0 ? '+' : ''}${adjustment}</span>`);
-  }
   return `${displayQty}${badges.length ? ' ' + badges.join(' ') : ''}`;
 }
 
@@ -747,17 +746,15 @@ function renderConsignmentTable() {
     adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
   });
 
+  // 未核完調整照樣算進 displayQty，只是不顯示標籤了（跟泰山/台中同樣的理由，見 renderQtyCell）
   consignmentTableBody.innerHTML = items.map(r => {
     const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
     const displayQty = r.qty + adjustment;
-    const badge = adjustment
-      ? ` <span class="badge badge-pending" title="異動裡還沒核完的寄庫變動">未核完 ${adjustment > 0 ? '+' : ''}${adjustment}</span>`
-      : '';
     return `
     <tr>
       <td>${escapeHTML(r.customer)}</td>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${displayQty}${badge}</td>
+      <td>${displayQty}</td>
     </tr>
   `;
   }).join('');

@@ -212,12 +212,6 @@ main {
   cursor: help;
 }
 
-.badge-pending {
-  background: #f3e8ff;
-  color: #6b21a8;
-  cursor: help;
-}
-
 .import-item {
   display: flex;
   align-items: center;
