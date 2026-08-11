@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=18';
+import { db } from './firebase-config.js?v=19';
 import {
   collection,
   onSnapshot,
@@ -223,6 +223,27 @@ export async function replaceConsignment(records) {
   return replaceWholeCollection('consignment', docs);
 }
 
+// ---------- 寄庫的倉庫分配：ERP的寄庫數量是客戶+品項的總數，沒有泰山/台中的細分，
+// 是人工手動追蹤的（對照過0805庫存YU的「寄庫」分頁，同一個客戶+品項會拆成泰山/台中庫兩列各自記數量）。
+// 跟鎖庫一樣，同一個客戶+品項可能同時有泰山跟台中兩筆，所以每筆各自一個文件，可隨時新增/編輯/刪除。
+
+export function subscribeToConsignmentWarehouse(callback, onError) {
+  return subscribeToCollection('consignmentWarehouse', callback, onError);
+}
+
+// record: { itemCode, itemName, customer, warehouse, qty, remark }
+export async function addConsignmentWarehouse(record) {
+  await addDoc(collection(db, 'consignmentWarehouse'), { ...record, updatedAt: Date.now() });
+}
+
+export async function updateConsignmentWarehouse(id, record) {
+  await setDoc(doc(db, 'consignmentWarehouse', id), { ...record, updatedAt: Date.now() }, { merge: true });
+}
+
+export async function deleteConsignmentWarehouse(id) {
+  await deleteDoc(doc(db, 'consignmentWarehouse', id));
+}
+
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------
 // 泰山/台中庫存數字只反映「已核完」的單據，這裡存的是還沒核完、需要另外加減回庫存數字的部分。
 
@@ -327,7 +348,7 @@ export async function deleteLockedStock(id) {
 // 使用者要留存「當天最終結果」的歷史記錄，用「今天完成」按鈕手動存檔（不是每次匯入自動存，
 // 因為當天可能匯入好幾次還沒定案）。一個日期一種資料類型各自一份文件，避免單一文件塞太多資料。
 
-const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock'];
+const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock', 'consignmentWarehouse'];
 
 function snapshotDocId(date, type) {
   return `${date}__${type}`;

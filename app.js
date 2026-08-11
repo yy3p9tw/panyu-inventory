@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=18';
+import { auth } from './firebase-config.js?v=19';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -13,12 +13,13 @@ import {
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
+  subscribeToConsignmentWarehouse, addConsignmentWarehouse, updateConsignmentWarehouse, deleteConsignmentWarehouse,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=18';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=18';
+} from './inventory-service.js?v=19';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=19';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -74,6 +75,15 @@ const consignmentSearchInput = document.getElementById('consignmentSearchInput')
 const consignmentTableBody = document.getElementById('consignmentTableBody');
 const consignmentCount = document.getElementById('consignmentCount');
 
+const consignWhNewCode = document.getElementById('consignWhNewCode');
+const consignWhNewCustomer = document.getElementById('consignWhNewCustomer');
+const consignWhNewWarehouse = document.getElementById('consignWhNewWarehouse');
+const consignWhNewQty = document.getElementById('consignWhNewQty');
+const consignWhNewRemark = document.getElementById('consignWhNewRemark');
+const consignWhAddBtn = document.getElementById('consignWhAddBtn');
+const consignWhCount = document.getElementById('consignWhCount');
+const consignWhTableBody = document.getElementById('consignWhTableBody');
+
 const lockedStockNewCode = document.getElementById('lockedStockNewCode');
 const lockedStockNewWarehouse = document.getElementById('lockedStockNewWarehouse');
 const lockedStockNewTag = document.getElementById('lockedStockNewTag');
@@ -113,6 +123,7 @@ let currentBatchList = [];
 let currentConsignment = [];
 let currentPendingAdjustments = [];
 let currentLockedStock = [];
+let currentConsignmentWarehouse = [];
 let currentRawImport = [];
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
@@ -124,6 +135,7 @@ let unsubscribeBatchList = null;
 let unsubscribeConsignment = null;
 let unsubscribePendingAdjustments = null;
 let unsubscribeLockedStock = null;
+let unsubscribeConsignmentWarehouse = null;
 let unsubscribeRawImport = null;
 
 // ---------- 登入 ----------
@@ -169,6 +181,7 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
   if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
   if (unsubscribeLockedStock) { unsubscribeLockedStock(); unsubscribeLockedStock = null; }
+  if (unsubscribeConsignmentWarehouse) { unsubscribeConsignmentWarehouse(); unsubscribeConsignmentWarehouse = null; }
   if (unsubscribeRawImport) { unsubscribeRawImport(); unsubscribeRawImport = null; }
   currentRoles = [];
   currentStock = [];
@@ -181,6 +194,7 @@ onAuthStateChanged(auth, async user => {
   currentConsignment = [];
   currentPendingAdjustments = [];
   currentLockedStock = [];
+  currentConsignmentWarehouse = [];
   applyRoleVisibility(); // 立刻把畫面收回「沒有任何角色」狀態，避免短暫殘留上一個帳號看到的東西
 
   if (user) {
@@ -351,13 +365,19 @@ function applyRoleVisibility() {
       renderTaishanTable();
       renderTaichungTable();
     });
+    unsubscribeConsignmentWarehouse = subscribeToConsignmentWarehouse(rows => {
+      currentConsignmentWarehouse = rows;
+      renderConsignmentWarehouseTable();
+    });
   } else if (!canSeeStock && unsubscribeConsignment) {
     unsubscribeConsignment(); unsubscribeConsignment = null;
     unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
     unsubscribeLockedStock(); unsubscribeLockedStock = null;
+    unsubscribeConsignmentWarehouse(); unsubscribeConsignmentWarehouse = null;
     currentConsignment = [];
     currentPendingAdjustments = [];
     currentLockedStock = [];
+    currentConsignmentWarehouse = [];
   }
 }
 
@@ -860,6 +880,89 @@ lockedStockAddBtn.addEventListener('click', async () => {
     lockedStockNewTag.value = '';
     lockedStockNewQty.value = '';
     lockedStockNewRemark.value = '';
+  } catch (err) {
+    alert('新增失敗：' + err.message);
+  }
+});
+
+// ---------- 寄庫的倉庫分配（ERP 沒有這份資料，人工維護，逐筆新增/編輯/刪除） ----------
+// 對照過0805庫存YU的「寄庫」分頁：同一個客戶+品項，泰山跟台中是分開兩列各自記數量的，
+// ERP 匯出的寄庫.xlsx只給客戶+品項的總數，沒有這個細分——這裡讓使用者手動補上。
+
+function renderConsignmentWarehouseTable() {
+  const items = [...currentConsignmentWarehouse].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+  consignWhCount.textContent = items.length ? `共 ${items.length} 筆` : '目前沒有手動分配的紀錄';
+
+  if (items.length === 0) {
+    consignWhTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    return;
+  }
+
+  consignWhTableBody.innerHTML = items.map(r => `
+    <tr data-id="${escapeHTML(r.id)}">
+      <td><input type="text" class="consign-wh-input" data-field="itemCode" value="${escapeHTML(r.itemCode || '')}" style="width:110px; padding:4px 6px;" /></td>
+      <td><input type="text" class="consign-wh-input" data-field="itemName" value="${escapeHTML(r.itemName || '')}" style="width:140px; padding:4px 6px;" /></td>
+      <td><input type="text" class="consign-wh-input" data-field="customer" value="${escapeHTML(r.customer || '')}" style="width:100px; padding:4px 6px;" /></td>
+      <td>
+        <select class="consign-wh-input" data-field="warehouse" style="padding:4px 6px;">
+          <option value="泰山"${r.warehouse === '泰山' ? ' selected' : ''}>泰山</option>
+          <option value="台中"${r.warehouse === '台中' ? ' selected' : ''}>台中</option>
+        </select>
+      </td>
+      <td><input type="text" class="consign-wh-input" data-field="qty" value="${escapeHTML(String(r.qty ?? ''))}" style="width:70px; padding:4px 6px;" /></td>
+      <td><input type="text" class="consign-wh-input" data-field="remark" value="${escapeHTML(r.remark || '')}" style="width:120px; padding:4px 6px;" /></td>
+      <td><button type="button" class="secondary consign-wh-delete-btn">刪除</button></td>
+    </tr>
+  `).join('');
+}
+
+consignWhTableBody.addEventListener('change', async e => {
+  if (!e.target.classList.contains('consign-wh-input')) return;
+  const row = e.target.closest('tr');
+  const id = row.dataset.id;
+  const field = e.target.dataset.field;
+  let value = e.target.value.trim();
+  if (field === 'qty') value = Number(value) || 0;
+  try {
+    await updateConsignmentWarehouse(id, { [field]: value });
+  } catch (err) {
+    alert('儲存失敗：' + err.message);
+  }
+});
+
+consignWhTableBody.addEventListener('click', async e => {
+  if (!e.target.classList.contains('consign-wh-delete-btn')) return;
+  const row = e.target.closest('tr');
+  const id = row.dataset.id;
+  if (!confirm('確定要刪除這筆倉庫分配紀錄嗎？')) return;
+  try {
+    await deleteConsignmentWarehouse(id);
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
+  }
+});
+
+consignWhAddBtn.addEventListener('click', async () => {
+  const itemCode = consignWhNewCode.value.trim();
+  const customer = consignWhNewCustomer.value.trim();
+  const warehouse = consignWhNewWarehouse.value;
+  const qty = Number(consignWhNewQty.value) || 0;
+  const remark = consignWhNewRemark.value.trim();
+  if (!itemCode || !customer || !qty) {
+    alert('請輸入品號、客戶跟數量');
+    return;
+  }
+  // 品名自動從目前的寄庫總數資料找，找不到就留空，之後可以再手動補
+  const matched = currentConsignment.find(c => c.itemCode === itemCode && c.customer === customer);
+  const itemName = matched ? matched.itemName : '';
+
+  try {
+    await addConsignmentWarehouse({ itemCode, itemName, customer, warehouse, qty, remark });
+    consignWhNewCode.value = '';
+    consignWhNewCustomer.value = '';
+    consignWhNewQty.value = '';
+    consignWhNewRemark.value = '';
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
@@ -1459,7 +1562,7 @@ function todayDateString() {
 
 saveSnapshotBtn.addEventListener('click', async () => {
   const date = todayDateString();
-  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
+  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫/寄庫倉庫分配存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
   saveSnapshotBtn.disabled = true;
   saveSnapshotMsg.textContent = '存檔中...';
   try {
@@ -1469,7 +1572,8 @@ saveSnapshotBtn.addEventListener('click', async () => {
       consignment: currentConsignment,
       factoryMaterial: currentFactoryMaterial,
       pendingAdjustments: currentPendingAdjustments,
-      lockedStock: currentLockedStock
+      lockedStock: currentLockedStock,
+      consignmentWarehouse: currentConsignmentWarehouse
     });
     saveSnapshotMsg.textContent = `已存檔 ${date} 的快照，可以到「歷史」分頁查詢。`;
   } catch (err) {
@@ -1503,6 +1607,10 @@ const HISTORY_VIEWS = {
   lockedStock: { columns: [
     { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'warehouse', label: '倉庫' },
     { key: 'tag', label: '標籤' }, { key: 'lockedQty', label: '鎖庫數量' }, { key: 'remark', label: '備註' }
+  ] },
+  consignmentWarehouse: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'customer', label: '客戶' },
+    { key: 'warehouse', label: '倉庫' }, { key: 'qty', label: '數量' }, { key: 'remark', label: '備註' }
   ] }
 };
 
