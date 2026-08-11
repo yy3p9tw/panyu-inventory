@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=21';
+import { db } from './firebase-config.js?v=22';
 import {
   collection,
   onSnapshot,
@@ -239,6 +239,29 @@ export async function addConsignmentLedgerEntry(entry) {
 
 export async function deleteConsignmentLedgerEntry(id) {
   await deleteDoc(doc(db, 'consignmentLedger', id));
+}
+
+// 從組合檔「寄庫」分頁批次匯入歷史進出紀錄（該分頁一欄一天，這裡已經在 app.js 解析成一筆一筆帶日期的紀錄）。
+// 用「客戶+品號+倉庫+日期」當文件ID（不是隨機ID）：同一天在原始表格裡本來就只有一個數字，
+// 用日期當ID可以讓同一份檔案重複匯入時是覆蓋、不是產生重複資料。跟畫面上手動新增的單筆紀錄
+// （用隨機ID，允許同一天有好幾筆）是不同的ID規則，兩種紀錄會共存在同一個 collection 裡。
+function consignmentLedgerImportDocId(customer, itemCode, warehouse, date) {
+  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}__${warehouse}__${date}`;
+}
+
+export async function importConsignmentLedgerEntries(records) {
+  const chunks = [];
+  const remaining = [...records];
+  while (remaining.length) chunks.push(remaining.splice(0, 450));
+  for (const chunk of chunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(r => {
+      const ref = doc(db, 'consignmentLedger', consignmentLedgerImportDocId(r.customer, r.itemCode, r.warehouse, r.date));
+      batch.set(ref, { ...r, updatedAt: Date.now() }, { merge: true });
+    });
+    await batch.commit();
+  }
+  return { written: records.length };
 }
 
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------

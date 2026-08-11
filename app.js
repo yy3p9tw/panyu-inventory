@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=21';
+import { auth } from './firebase-config.js?v=22';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -13,13 +13,13 @@ import {
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
-  subscribeToConsignmentLedger, addConsignmentLedgerEntry, deleteConsignmentLedgerEntry,
+  subscribeToConsignmentLedger, addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=21';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=21';
+} from './inventory-service.js?v=22';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=22';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -1373,6 +1373,106 @@ function parseItemReferenceFromMaster(wb) {
   return records;
 }
 
+// 組合檔「寄庫」分頁是一欄一天記錄進出（正數=當天寄入、負數=當天出庫），日期欄位有兩種格式混在一起：
+// 前段是 Excel 序列數字（儲存格式是日期，raw:true 讀出來是數字），後段是「7月1日」這種純文字
+// （沒有年份）。文字欄位的年份用前面數字欄位換算出來的年份當基準，如果換算後比前一欄還早
+// （代表跨年了）就自動+1年。
+function excelSerialToISODate(serial) {
+  const ms = (serial - 25569) * 86400 * 1000; // 25569 = Excel(1899-12-30) 到 Unix epoch(1970-01-01) 的天數
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+function isoDateMinusOneDay(iso) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+// 掃過標頭列，找出所有日期欄位，回傳 [{ index, date('YYYY-MM-DD') }, ...]（依欄位順序，即時間順序）
+function parseConsignmentDateColumns(header, startIdx, endIdx) {
+  const cols = [];
+  let anchorYear = null;
+  let prevDate = null;
+  for (let i = startIdx; i < endIdx; i++) {
+    const raw = header[i];
+    if (raw === '' || raw === null || raw === undefined) continue;
+    let dateStr = null;
+    if (typeof raw === 'number') {
+      dateStr = excelSerialToISODate(raw);
+      anchorYear = Number(dateStr.slice(0, 4));
+    } else {
+      const m = String(raw).trim().match(/^(\d{1,2})月(\d{1,2})日$/);
+      if (m && anchorYear) {
+        const mm = String(m[1]).padStart(2, '0');
+        const dd = String(m[2]).padStart(2, '0');
+        let candidate = `${anchorYear}-${mm}-${dd}`;
+        if (prevDate && candidate < prevDate) candidate = `${anchorYear + 1}-${mm}-${dd}`;
+        dateStr = candidate;
+      }
+    }
+    if (dateStr) {
+      cols.push({ index: i, date: dateStr });
+      prevDate = dateStr;
+    }
+  }
+  return cols;
+}
+
+// 組合檔「寄庫」分頁沒有品號欄位，只有客戶+品名+庫別，用目前已經匯入的 consignment（寄庫.xlsx 的資料）
+// 依「客戶+品名」反查品號——查不到的就跳過（沒辦法對應到現在的寄庫總數，強行匯入也沒有意義），
+// 用 skipped 計數回報給使用者。庫別欄位是空的那種列是自動產生的小計列，不是真正的資料列，也跳過。
+function parseConsignmentLedgerFromMaster(wb) {
+  const sheet = wb.Sheets['寄庫'];
+  if (!sheet) throw new Error('這份檔案裡找不到「寄庫」分頁');
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return { records: [], skipped: 0 };
+  const header = rows[0];
+  const idxCustomer = findColumnIndex(header, ['客戶']);
+  const idxItemName = findColumnIndex(header, ['品名']);
+  const idxWarehouse = findColumnIndex(header, ['庫別']);
+  const idxLastMonth = findColumnIndex(header, ['上月數量']);
+  const idxToday = findColumnIndex(header, ['本日數量']);
+  if (idxCustomer === -1 || idxItemName === -1 || idxWarehouse === -1) {
+    throw new Error('「寄庫」分頁找不到「客戶」「品名」或「庫別」欄位，格式可能跟預期不同');
+  }
+
+  const dateStartIdx = idxLastMonth !== -1 ? idxLastMonth + 1 : idxWarehouse + 1;
+  const dateEndIdx = idxToday !== -1 ? idxToday : header.length;
+  const dateColumns = parseConsignmentDateColumns(header, dateStartIdx, dateEndIdx);
+  const firstEntryDate = dateColumns.length ? dateColumns[0].date : todayDateString();
+
+  // 客戶+品名 -> 品號，從目前的寄庫總數（ERP匯入的 consignment）反查
+  const codeByCustomerName = new Map();
+  currentConsignment.forEach(c => codeByCustomerName.set(`${c.customer}__${c.itemName}`, c.itemCode));
+
+  const records = [];
+  let skipped = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const customer = (row[idxCustomer] || '').toString().trim();
+    const itemName = (row[idxItemName] || '').toString().trim();
+    const whRaw = (row[idxWarehouse] || '').toString().trim();
+    if (!customer || !itemName || !whRaw) continue; // 庫別是空的是自動小計列，不是真正資料
+    const warehouse = normalizeWarehouse(whRaw);
+    if (!warehouse) continue; // 庫別不是泰山/台中的略過
+
+    const itemCode = codeByCustomerName.get(`${customer}__${itemName}`);
+    if (!itemCode) { skipped++; continue; }
+
+    const lastMonthQty = idxLastMonth !== -1 ? Number(row[idxLastMonth]) || 0 : 0;
+    if (lastMonthQty) {
+      records.push({ customer, itemCode, itemName, warehouse, date: isoDateMinusOneDay(firstEntryDate), deltaQty: lastMonthQty, remark: '上月結轉' });
+    }
+    dateColumns.forEach(({ index, date }) => {
+      const val = Number(row[index]);
+      if (!val) return;
+      records.push({ customer, itemCode, itemName, warehouse, date, deltaQty: val, remark: '' });
+    });
+  }
+  return { records, skipped };
+}
+
 // 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫還沒有真實檔案樣本，
 // 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
 // 同一個檔名可能對到不只一個項目，所以是列出所有符合的候選，不是只挑第一個。
@@ -1400,6 +1500,17 @@ const IMPORT_ITEMS = [
     run: async records => {
       const result = await importItemReferenceFromMaster(records);
       return `已更新參照 ${result.written} 筆`;
+    }
+  },
+  {
+    key: 'consignmentLedgerFromMaster',
+    label: '寄庫進出紀錄（寄庫分頁，匯入歷史記錄，用日期當ID可重複匯入不會重複）',
+    matchesFilename: name => name.includes('庫存YU'),
+    prepare: wb => parseConsignmentLedgerFromMaster(wb),
+    describe: result => `共 ${result.records.length} 筆進出紀錄${result.skipped ? `，另有 ${result.skipped} 筆因為找不到對應的寄庫品號（客戶+品名在目前的寄庫總數裡查不到）被略過` : ''}`,
+    run: async result => {
+      const written = await importConsignmentLedgerEntries(result.records);
+      return `已匯入寄庫進出紀錄 ${written.written} 筆`;
     }
   },
   {
