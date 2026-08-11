@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=20';
+import { db } from './firebase-config.js?v=21';
 import {
   collection,
   onSnapshot,
@@ -223,22 +223,22 @@ export async function replaceConsignment(records) {
   return replaceWholeCollection('consignment', docs);
 }
 
-// ---------- 寄庫的倉庫分配：ERP的寄庫數量是客戶+品項的總數，沒有泰山/台中的細分，
-// 是人工手動追蹤的（對照過0805庫存YU的「寄庫」分頁，同一個客戶+品項會拆成泰山/台中庫兩列各自記數量）。
-// 直接合併顯示在寄庫表格裡（客戶+品項那一列多兩個可編輯的泰山/台中欄位），不是另外獨立的清單，
-// 所以用「客戶+品號+倉庫」當文件ID，改哪個欄位就整份覆蓋那個組合的文件，不會重複新增。
+// ---------- 寄庫的倉庫分配：ERP的寄庫數量是客戶+品項的總數，沒有泰山/台中的細分。
+// 對照過0805庫存YU的「寄庫」分頁，真實的做法是逐日記錄進出（一欄一天，正數=當天寄入、負數=當天出庫），
+// 目前數量是全部加總、寄庫日期是最近一筆的日期——這裡改成資料庫版本：每筆進出各自一筆帶日期的紀錄，
+// 不是一欄一天，畫面上即時加總算出目前數量跟最近日期。同一個客戶+品項+倉庫可以有很多筆，逐筆新增/刪除。
 
-export function subscribeToConsignmentWarehouse(callback, onError) {
-  return subscribeToCollection('consignmentWarehouse', callback, onError);
+export function subscribeToConsignmentLedger(callback, onError) {
+  return subscribeToCollection('consignmentLedger', callback, onError);
 }
 
-function consignmentWarehouseDocId(customer, itemCode, warehouse) {
-  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}__${warehouse}`;
+// entry: { customer, itemCode, itemName, warehouse, date('YYYY-MM-DD'), deltaQty(正=寄入/負=出庫), remark }
+export async function addConsignmentLedgerEntry(entry) {
+  await addDoc(collection(db, 'consignmentLedger'), { ...entry, updatedAt: Date.now() });
 }
 
-export async function setConsignmentWarehouseQty(customer, itemCode, itemName, warehouse, qty) {
-  const ref = doc(db, 'consignmentWarehouse', consignmentWarehouseDocId(customer, itemCode, warehouse));
-  await setDoc(ref, { customer, itemCode, itemName, warehouse, qty, updatedAt: Date.now() }, { merge: true });
+export async function deleteConsignmentLedgerEntry(id) {
+  await deleteDoc(doc(db, 'consignmentLedger', id));
 }
 
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------
@@ -345,13 +345,13 @@ export async function deleteLockedStock(id) {
 // 使用者要留存「當天最終結果」的歷史記錄，用「今天完成」按鈕手動存檔（不是每次匯入自動存，
 // 因為當天可能匯入好幾次還沒定案）。一個日期一種資料類型各自一份文件，避免單一文件塞太多資料。
 
-const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock', 'consignmentWarehouse'];
+const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock', 'consignmentLedger'];
 
 function snapshotDocId(date, type) {
   return `${date}__${type}`;
 }
 
-// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments, lockedStock }（畫面上目前訂閱到的即時資料）
+// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments, lockedStock, consignmentLedger }（畫面上目前訂閱到的即時資料）
 export async function saveDailySnapshot(date, data) {
   const batch = writeBatch(db);
   SNAPSHOT_TYPES.forEach(type => {

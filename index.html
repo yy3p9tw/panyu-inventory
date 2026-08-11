@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20" />
+  <link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
   <header class="site-header">
@@ -171,7 +171,7 @@
       <section id="tabConsignment" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>寄庫</h2>
-          <p class="hint-text">寄庫數量是 ERP 給的客戶+品項總數。泰山/台中兩欄 ERP 沒有這個細分，是人工手動追蹤「這筆寄庫實際上有多少在泰山、多少在台中」，直接在欄位裡編輯，改完自動存檔。</p>
+          <p class="hint-text">寄庫數量是 ERP 給的客戶+品項總數。泰山/台中兩欄 ERP 沒有這個細分，是人工手動記錄的——點數字可以看明細、新增一筆進出紀錄（帶日期），系統自動加總。</p>
           <input type="text" id="consignmentSearchInput" placeholder="搜尋客戶或品名..." />
           <p class="hint-text" id="consignmentCount"></p>
           <div class="table-scroll">
@@ -181,6 +181,37 @@
               </thead>
               <tbody id="consignmentTableBody"></tbody>
             </table>
+          </div>
+
+          <div id="consignLedgerPanel" style="display:none; margin-top:20px; padding:14px; background:var(--color-bg-subtle, #f9fafb); border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h3 id="consignLedgerTitle" style="margin:0;"></h3>
+              <button type="button" id="consignLedgerCloseBtn" class="secondary">關閉</button>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+              <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+                日期
+                <input type="date" id="consignLedgerNewDate" style="padding:6px 8px;" />
+              </label>
+              <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+                數量（寄入填正數，出庫填負數，例：50 或 -30）
+                <input type="text" id="consignLedgerNewQty" placeholder="例：50 或 -30" style="padding:6px 8px; width:120px;" />
+              </label>
+              <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+                備註
+                <input type="text" id="consignLedgerNewRemark" placeholder="備註（選填）" style="padding:6px 8px; width:150px;" />
+              </label>
+              <button type="button" id="consignLedgerAddBtn">新增這筆</button>
+            </div>
+            <p class="hint-text" id="consignLedgerCount"></p>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr><th>日期</th><th>數量</th><th>備註</th><th></th></tr>
+                </thead>
+                <tbody id="consignLedgerTableBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -262,7 +293,7 @@
 
           <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--color-border);">
             <h2>今天的資料存檔了嗎？</h2>
-            <p class="hint-text">今天所有檔案都匯入完、確定是最終版本之後，按下面這個按鈕，系統會把今天的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫/寄庫倉庫分配存成一份快照，之後可以到「歷史」分頁按日期查回來看。按第二次會覆蓋今天已經存過的快照（用最新的版本）。</p>
+            <p class="hint-text">今天所有檔案都匯入完、確定是最終版本之後，按下面這個按鈕，系統會把今天的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫/寄庫進出紀錄存成一份快照，之後可以到「歷史」分頁按日期查回來看。按第二次會覆蓋今天已經存過的快照（用最新的版本）。</p>
             <button type="button" id="saveSnapshotBtn">今天完成，存檔今日快照</button>
             <p class="hint-text" id="saveSnapshotMsg"></p>
           </div>
@@ -288,7 +319,7 @@
                 <option value="factoryMaterial">廠務用料</option>
                 <option value="pendingAdjustments">未核完調整</option>
                 <option value="lockedStock">鎖庫</option>
-                <option value="consignmentWarehouse">寄庫倉庫分配</option>
+                <option value="consignmentLedger">寄庫進出紀錄</option>
               </select>
             </label>
             <button type="button" id="historyLoadBtn">查詢</button>
@@ -328,6 +359,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=20"></script>
+  <script type="module" src="app.js?v=21"></script>
 </body>
 </html>
