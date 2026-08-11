@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=19';
+import { db } from './firebase-config.js?v=20';
 import {
   collection,
   onSnapshot,
@@ -225,23 +225,20 @@ export async function replaceConsignment(records) {
 
 // ---------- 寄庫的倉庫分配：ERP的寄庫數量是客戶+品項的總數，沒有泰山/台中的細分，
 // 是人工手動追蹤的（對照過0805庫存YU的「寄庫」分頁，同一個客戶+品項會拆成泰山/台中庫兩列各自記數量）。
-// 跟鎖庫一樣，同一個客戶+品項可能同時有泰山跟台中兩筆，所以每筆各自一個文件，可隨時新增/編輯/刪除。
+// 直接合併顯示在寄庫表格裡（客戶+品項那一列多兩個可編輯的泰山/台中欄位），不是另外獨立的清單，
+// 所以用「客戶+品號+倉庫」當文件ID，改哪個欄位就整份覆蓋那個組合的文件，不會重複新增。
 
 export function subscribeToConsignmentWarehouse(callback, onError) {
   return subscribeToCollection('consignmentWarehouse', callback, onError);
 }
 
-// record: { itemCode, itemName, customer, warehouse, qty, remark }
-export async function addConsignmentWarehouse(record) {
-  await addDoc(collection(db, 'consignmentWarehouse'), { ...record, updatedAt: Date.now() });
+function consignmentWarehouseDocId(customer, itemCode, warehouse) {
+  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}__${warehouse}`;
 }
 
-export async function updateConsignmentWarehouse(id, record) {
-  await setDoc(doc(db, 'consignmentWarehouse', id), { ...record, updatedAt: Date.now() }, { merge: true });
-}
-
-export async function deleteConsignmentWarehouse(id) {
-  await deleteDoc(doc(db, 'consignmentWarehouse', id));
+export async function setConsignmentWarehouseQty(customer, itemCode, itemName, warehouse, qty) {
+  const ref = doc(db, 'consignmentWarehouse', consignmentWarehouseDocId(customer, itemCode, warehouse));
+  await setDoc(ref, { customer, itemCode, itemName, warehouse, qty, updatedAt: Date.now() }, { merge: true });
 }
 
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------

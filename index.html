@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=19" />
+  <link rel="stylesheet" href="style.css?v=20" />
 </head>
 <body>
   <header class="site-header">
@@ -171,53 +171,15 @@
       <section id="tabConsignment" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>寄庫</h2>
-          <p class="hint-text">貨還在泰山/台中倉庫，只是登記在客戶的寄庫帳上。這裡的數量是 ERP 給的客戶+品項總數，沒有分泰山/台中。</p>
+          <p class="hint-text">寄庫數量是 ERP 給的客戶+品項總數。泰山/台中兩欄 ERP 沒有這個細分，是人工手動追蹤「這筆寄庫實際上有多少在泰山、多少在台中」，直接在欄位裡編輯，改完自動存檔。</p>
           <input type="text" id="consignmentSearchInput" placeholder="搜尋客戶或品名..." />
           <p class="hint-text" id="consignmentCount"></p>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>客戶</th><th>品名</th><th>寄庫數量</th></tr>
+                <tr><th>客戶</th><th>品名</th><th>寄庫數量</th><th>泰山</th><th>台中</th></tr>
               </thead>
               <tbody id="consignmentTableBody"></tbody>
-            </table>
-          </div>
-
-          <h2 style="margin-top:24px;">倉庫分配</h2>
-          <p class="hint-text">ERP 沒有這份細分，是人工手動追蹤「這筆寄庫實際上有多少在泰山、多少在台中」，可以隨時新增/編輯/刪除。</p>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; padding:12px; background:var(--color-bg-subtle, #f9fafb); border-radius:8px;">
-            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
-              品號
-              <input type="text" id="consignWhNewCode" placeholder="品號" style="padding:6px 8px; width:150px;" />
-            </label>
-            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
-              客戶
-              <input type="text" id="consignWhNewCustomer" placeholder="客戶" style="padding:6px 8px; width:120px;" />
-            </label>
-            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
-              倉庫
-              <select id="consignWhNewWarehouse" style="padding:6px 8px;">
-                <option value="泰山">泰山</option>
-                <option value="台中">台中</option>
-              </select>
-            </label>
-            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
-              數量
-              <input type="text" id="consignWhNewQty" placeholder="數量" style="padding:6px 8px; width:90px;" />
-            </label>
-            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
-              備註
-              <input type="text" id="consignWhNewRemark" placeholder="備註（選填）" style="padding:6px 8px; width:150px;" />
-            </label>
-            <button type="button" id="consignWhAddBtn">新增</button>
-          </div>
-          <p class="hint-text" id="consignWhCount"></p>
-          <div class="table-scroll">
-            <table class="data-table">
-              <thead>
-                <tr><th>品號</th><th>品名</th><th>客戶</th><th>倉庫</th><th>數量</th><th>備註</th><th></th></tr>
-              </thead>
-              <tbody id="consignWhTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -366,6 +328,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=19"></script>
+  <script type="module" src="app.js?v=20"></script>
 </body>
 </html>
