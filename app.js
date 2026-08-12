@@ -527,7 +527,7 @@ function renderFactoryMaterialTable() {
     batchesByCode.get(b.itemCode).push(b);
   });
 
-  const sorted = [...withStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     return `
@@ -562,7 +562,7 @@ function renderAvailableMaterialTable() {
     batchesByCode.get(b.itemCode).push(b);
   });
 
-  const sorted = [...taishanStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+  const sorted = [...taishanStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   availableMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     const tag = tagByCode.get(r.itemCode) || '';
