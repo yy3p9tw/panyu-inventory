@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=26';
+import { db } from './firebase-config.js?v=27';
 import {
   collection,
   onSnapshot,
@@ -286,27 +286,6 @@ export async function replacePendingAdjustments(records, sources) {
     }
   }));
   return replaceWholeCollection('pendingAdjustments', docs, data => sources.includes(data.source));
-}
-
-// ---------- 原始匯入（整份組合檔，不管欄位意義，每個分頁每一列原樣存起來）：每次匯入完全覆蓋 ----------
-
-export function subscribeToRawImport(callback, onError) {
-  return subscribeToCollection('rawImport', callback, onError);
-}
-
-// records: [{ sheet, sheetOrder, rowIndex, cells: [...] }]
-export async function replaceRawImport(records) {
-  const docs = records.map(r => ({
-    id: `${sanitizeIdPart(r.sheet)}__${r.rowIndex}`,
-    data: {
-      sheet: r.sheet,
-      sheetOrder: r.sheetOrder,
-      rowIndex: r.rowIndex,
-      cells: r.cells,
-      updatedAt: Date.now()
-    }
-  }));
-  return replaceWholeCollection('rawImport', docs);
 }
 
 // ---------- 彙總（會計角色用）：每次匯入完全覆蓋 ----------

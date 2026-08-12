@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=26" />
+  <link rel="stylesheet" href="style.css?v=27" />
 </head>
 <body>
   <header class="site-header">
@@ -41,7 +41,6 @@
         <button type="button" class="tab-btn" data-tab="batch">批號</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
-        <button type="button" class="tab-btn" data-tab="raw">原始資料</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
         <button type="button" class="tab-btn" data-tab="history">歷史</button>
         <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
@@ -260,20 +259,6 @@
         </div>
       </section>
 
-      <!-- 原始資料（整份組合檔一比一塞進來的，不管欄位意義，管理員專用） -->
-      <section id="tabRaw" class="tab-panel" style="display:none;">
-        <div class="panel">
-          <h2>原始資料</h2>
-          <p class="hint-text">整份組合檔（1150805庫存YU.xlsx 這種）原封不動塞進來的資料，每個分頁每一列都在，沒有篩選、沒有解讀欄位意義。</p>
-          <select id="rawSheetSelect" style="margin-bottom:10px; padding:8px 12px; border:1px solid var(--color-border); border-radius:8px;"></select>
-          <p class="hint-text" id="rawCount"></p>
-          <div class="table-scroll">
-            <table class="data-table">
-              <tbody id="rawTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
 
       <!-- 匯入資料 -->
       <section id="tabImport" class="tab-panel" style="display:none;">
@@ -358,6 +343,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=26"></script>
+  <script type="module" src="app.js?v=27"></script>
 </body>
 </html>

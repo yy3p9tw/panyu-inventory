@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=26';
+import { auth } from './firebase-config.js?v=27';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,10 +16,9 @@ import {
   subscribeToConsignmentLedger, addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
-  saveDailySnapshot, loadDailySnapshot,
-  subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=26';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=26';
+  saveDailySnapshot, loadDailySnapshot
+} from './inventory-service.js?v=27';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=27';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -94,10 +93,6 @@ const lockedStockAddBtn = document.getElementById('lockedStockAddBtn');
 const lockedStockCount = document.getElementById('lockedStockCount');
 const lockedStockTableBody = document.getElementById('lockedStockTableBody');
 
-const rawSheetSelect = document.getElementById('rawSheetSelect');
-const rawTableBody = document.getElementById('rawTableBody');
-const rawCount = document.getElementById('rawCount');
-
 const WAREHOUSES = ['泰山', '台中'];
 const ROLES = ['泰山倉管', '台中倉管', '廠務', '會計', '管理員'];
 
@@ -125,7 +120,6 @@ let currentConsignment = [];
 let currentPendingAdjustments = [];
 let currentLockedStock = [];
 let currentConsignmentLedger = [];
-let currentRawImport = [];
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
@@ -137,7 +131,6 @@ let unsubscribeConsignment = null;
 let unsubscribePendingAdjustments = null;
 let unsubscribeLockedStock = null;
 let unsubscribeConsignmentLedger = null;
-let unsubscribeRawImport = null;
 
 // ---------- 登入 ----------
 
@@ -183,14 +176,12 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
   if (unsubscribeLockedStock) { unsubscribeLockedStock(); unsubscribeLockedStock = null; }
   if (unsubscribeConsignmentLedger) { unsubscribeConsignmentLedger(); unsubscribeConsignmentLedger = null; }
-  if (unsubscribeRawImport) { unsubscribeRawImport(); unsubscribeRawImport = null; }
   currentRoles = [];
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
   currentItemReference = [];
   currentSummary = [];
-  currentRawImport = [];
   currentBatchList = [];
   currentConsignment = [];
   currentPendingAdjustments = [];
@@ -253,7 +244,6 @@ function applyRoleVisibility() {
   const batchBtn = document.querySelector('.tab-btn[data-tab="batch"]');
   const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
   const lockedStockBtn = document.querySelector('.tab-btn[data-tab="lockedStock"]');
-  const rawBtn = document.querySelector('.tab-btn[data-tab="raw"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
   const historyBtn = document.querySelector('.tab-btn[data-tab="history"]');
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
@@ -268,7 +258,6 @@ function applyRoleVisibility() {
   batchBtn.style.display = canSeeStock ? '' : 'none';
   consignmentBtn.style.display = canSeeStock ? '' : 'none';
   lockedStockBtn.style.display = canSeeStock ? '' : 'none';
-  rawBtn.style.display = isAdmin ? '' : 'none';
   importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary || isAdmin) ? '' : 'none';
   historyBtn.style.display = (canSeeStock || canSeeFactory) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
@@ -291,18 +280,6 @@ function applyRoleVisibility() {
   } else if (!isAdmin && unsubscribeUsers) {
     unsubscribeUsers();
     unsubscribeUsers = null;
-  }
-
-  if (isAdmin && !unsubscribeRawImport) {
-    unsubscribeRawImport = subscribeToRawImport(rows => {
-      currentRawImport = rows;
-      renderRawSheetOptions();
-      renderRawTable();
-    });
-  } else if (!isAdmin && unsubscribeRawImport) {
-    unsubscribeRawImport();
-    unsubscribeRawImport = null;
-    currentRawImport = [];
   }
 
   if (canSeeFactory && !unsubscribeFactoryMaterial) {
@@ -991,60 +968,6 @@ lockedStockAddBtn.addEventListener('click', async () => {
   }
 });
 
-// ---------- 原始資料（整份組合檔一比一塞進來的，不解讀欄位意義，管理員專用） ----------
-
-function colLetter(index) {
-  let n = index + 1;
-  let s = '';
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    s = String.fromCharCode(65 + rem) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-function renderRawSheetOptions() {
-  const sheets = new Map(); // sheet name -> sheetOrder
-  currentRawImport.forEach(r => {
-    if (!sheets.has(r.sheet)) sheets.set(r.sheet, r.sheetOrder ?? 0);
-  });
-  const names = Array.from(sheets.keys()).sort((a, b) => sheets.get(a) - sheets.get(b));
-  const current = rawSheetSelect.value;
-  rawSheetSelect.innerHTML = names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
-  if (names.includes(current)) rawSheetSelect.value = current;
-}
-
-function renderRawTable() {
-  if (!currentRawImport.length) {
-    rawCount.textContent = '目前沒有原始資料，請先到「匯入資料」上傳整份組合檔';
-    rawTableBody.innerHTML = '';
-    return;
-  }
-  const sheetName = rawSheetSelect.value;
-  const rows = currentRawImport
-    .filter(r => r.sheet === sheetName)
-    .sort((a, b) => a.rowIndex - b.rowIndex);
-
-  rawCount.textContent = `「${sheetName}」共 ${rows.length} 列`;
-
-  if (!rows.length) {
-    rawTableBody.innerHTML = `<tr><td style="text-align:center; color:#6b7280;">這個分頁沒有資料</td></tr>`;
-    return;
-  }
-
-  const maxCols = Math.max(...rows.map(r => (r.cells || []).length));
-  const headerRow = `<tr><th>#</th>${Array.from({ length: maxCols }, (_, i) => `<th>${colLetter(i)}</th>`).join('')}</tr>`;
-  const bodyRows = rows.map(r => {
-    const cells = r.cells || [];
-    const tds = Array.from({ length: maxCols }, (_, i) => `<td>${escapeHTML(cells[i] ?? '')}</td>`).join('');
-    return `<tr><td>${r.rowIndex + 1}</td>${tds}</tr>`;
-  }).join('');
-  rawTableBody.innerHTML = headerRow + bodyRows;
-}
-
-rawSheetSelect.addEventListener('change', renderRawTable);
-
 // ---------- 使用者管理 ----------
 
 function renderUsersTable() {
@@ -1303,27 +1226,6 @@ function parseSalesAdjustments(sheet) {
   return records;
 }
 
-// 整份組合檔（1150805庫存YU.xlsx 這種）原封不動塞進來：不管欄位意義、不篩選，
-// 每個分頁的每一列都存成一筆資料，之後在「原始資料」分頁一起慢慢看、慢慢決定要留什麼。
-function parseWholeWorkbookRaw(wb) {
-  const records = [];
-  wb.SheetNames.forEach((sheetName, sheetOrder) => {
-    const sheet = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-    rows.forEach((row, rowIndex) => {
-      const hasContent = row.some(cell => cell !== '' && cell !== null && cell !== undefined);
-      if (!hasContent) return;
-      records.push({
-        sheet: sheetName,
-        sheetOrder,
-        rowIndex,
-        cells: row.map(c => (c === null || c === undefined) ? '' : c)
-      });
-    });
-  });
-  return records;
-}
-
 // 組合檔（1150805庫存YU.xlsx）的「參照 (新)」分頁是人工維護的品項主檔，不是每天變動的 ERP 資料，
 // 可以整批匯入當初始值，之後有需要再到「參照」分頁手動改。只 set/merge、不整批覆蓋，不會洗掉手動改過的其他品項。
 function parseItemReferenceFromMaster(wb) {
@@ -1478,20 +1380,6 @@ function parseConsignmentLedgerFromMaster(wb) {
 // 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
 // 同一個檔名可能對到不只一個項目，所以是列出所有符合的候選，不是只挑第一個。
 const IMPORT_ITEMS = [
-  {
-    key: 'rawAll',
-    label: '整份組合檔（原始匯入，不篩選）',
-    matchesFilename: name => name.includes('庫存YU'),
-    prepare: wb => parseWholeWorkbookRaw(wb),
-    describe: records => {
-      const sheetCount = new Set(records.map(r => r.sheet)).size;
-      return `${sheetCount} 個分頁，共 ${records.length} 列（每個分頁每一列都會存，不篩選欄位）`;
-    },
-    run: async records => {
-      const result = await replaceRawImport(records);
-      return `已更新原始資料 ${result.written} 筆，到「原始資料」分頁可以選分頁瀏覽`;
-    }
-  },
   {
     key: 'itemReferenceFromMaster',
     label: '參照（品項主檔，當初始值，不覆蓋手動改過的）',
