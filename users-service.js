@@ -3,7 +3,7 @@
 // 所以改用「每次登入都順便把自己的 email 寫進 users/{uid}」的方式，
 // 讓管理員能看到的名單 = 曾經登入過的帳號，再由管理員勾選角色。
 
-import { db } from './firebase-config.js?v=24';
+import { db } from './firebase-config.js?v=25';
 import {
   collection,
   onSnapshot,
