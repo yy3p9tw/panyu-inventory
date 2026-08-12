@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=33" />
+  <link rel="stylesheet" href="style.css?v=34" />
 </head>
 <body>
   <header class="site-header">
@@ -20,6 +20,7 @@
         <button type="button" class="tab-btn active" data-tab="factory">廠務用料</button>
         <button type="button" class="tab-btn" data-tab="availableMaterial">可用原料(泰山)</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
+        <button type="button" class="tab-btn" data-tab="history">歷史</button>
       </div>
 
       <!-- 廠務用料 -->
@@ -68,9 +69,39 @@
           </div>
         </div>
       </section>
+
+      <!-- 歷史 -->
+      <section id="tabHistory" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <p class="hint-text">查某一天存的快照，唯讀。沒存過快照的日期會顯示查無資料。</p>
+          <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              日期
+              <input type="date" id="historyDateInput" style="padding:6px 8px;" />
+            </label>
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              資料種類
+              <select id="historyTypeSelect" style="padding:6px 8px;">
+                <option value="factoryMaterial">廠務用料</option>
+                <option value="stock">庫存（泰山/台中）</option>
+                <option value="batchList">批號</option>
+                <option value="lockedStock">鎖庫</option>
+              </select>
+            </label>
+            <button type="button" id="historyLoadBtn">查詢</button>
+          </div>
+          <p class="hint-text" id="historyCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead id="historyTableHead"></thead>
+              <tbody id="historyTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   </main>
 
-  <script type="module" src="factory.js?v=33"></script>
+  <script type="module" src="factory.js?v=34"></script>
 </body>
 </html>

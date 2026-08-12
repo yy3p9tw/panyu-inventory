@@ -1,6 +1,6 @@
 // 前台展示頁共用的小工具：純讀取、不需要登入。
-import { db } from './firebase-config.js?v=33';
-import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { db } from './firebase-config.js?v=34';
+import { collection, doc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 export function escapeHTML(str) {
   const div = document.createElement('div');
@@ -61,4 +61,72 @@ export function subscribeCollection(name, callback) {
     snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
     err => console.error(`讀取 ${name} 失敗`, err)
   );
+}
+
+// 歷史：跟後台「今天完成」存的快照是同一份 dailySnapshots collection，一個日期一種資料類型各自一份文件。
+// 回傳那個類型的 records 陣列；沒存過快照就是 null（區分「有存但是空」跟「沒存過」）。
+export async function loadDailySnapshotType(date, type) {
+  const snap = await getDoc(doc(db, 'dailySnapshots', `${date}__${type}`));
+  return snap.exists() ? (snap.data().records || []) : null;
+}
+
+// 跟後台app.js的HISTORY_VIEWS同一份定義，前台只需要用到其中幾種。
+export const HISTORY_VIEWS = {
+  stock: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' },
+    { key: 'warehouse', label: '倉庫' }, { key: 'qty', label: '庫存' }
+  ] },
+  batchList: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' },
+    { key: 'warehouse', label: '庫別' }, { key: 'batchNo', label: '批號' }, { key: 'qty', label: '包裝數量' }
+  ] },
+  consignment: { columns: [
+    { key: 'customer', label: '客戶' }, { key: 'itemName', label: '品名' }, { key: 'qty', label: '寄庫數量' }
+  ] },
+  consignmentLedger: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'customer', label: '客戶' },
+    { key: 'warehouse', label: '倉庫' }, { key: 'date', label: '日期' }, { key: 'deltaQty', label: '數量' }
+  ] },
+  factoryMaterial: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'qty', label: '數量' }
+  ] },
+  lockedStock: { columns: [
+    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'warehouse', label: '倉庫' },
+    { key: 'tag', label: '標籤' }, { key: 'lockedQty', label: '鎖庫數量' }, { key: 'remark', label: '備註' }
+  ] }
+};
+
+// 共用的歷史查詢按鈕邏輯，dom = { dateInput, typeSelect, loadBtn, count, tableHead, tableBody }
+export function wireHistoryQuery(dom) {
+  dom.loadBtn.addEventListener('click', async () => {
+    const date = dom.dateInput.value;
+    const type = dom.typeSelect.value;
+    if (!date) { alert('請先選日期'); return; }
+    dom.loadBtn.disabled = true;
+    dom.count.textContent = '查詢中...';
+    dom.tableHead.innerHTML = '';
+    dom.tableBody.innerHTML = '';
+    try {
+      const records = await loadDailySnapshotType(date, type);
+      const view = HISTORY_VIEWS[type];
+      dom.tableHead.innerHTML = `<tr>${view.columns.map(c => `<th>${c.label}</th>`).join('')}</tr>`;
+      if (records === null) {
+        dom.count.textContent = `${date} 沒有存過「${dom.typeSelect.options[dom.typeSelect.selectedIndex].text}」的快照`;
+        dom.tableBody.innerHTML = `<tr><td colspan="${view.columns.length}" style="text-align:center; color:#6b7280;">查無資料</td></tr>`;
+        return;
+      }
+      dom.count.textContent = `${date} 共 ${records.length} 筆`;
+      if (!records.length) {
+        dom.tableBody.innerHTML = `<tr><td colspan="${view.columns.length}" style="text-align:center; color:#6b7280;">這份快照是空的</td></tr>`;
+        return;
+      }
+      dom.tableBody.innerHTML = records.map(r => `
+        <tr>${view.columns.map(c => `<td>${escapeHTML(r[c.key] ?? '')}</td>`).join('')}</tr>
+      `).join('');
+    } catch (err) {
+      dom.count.textContent = '查詢失敗：' + err.message;
+    } finally {
+      dom.loadBtn.disabled = false;
+    }
+  });
 }

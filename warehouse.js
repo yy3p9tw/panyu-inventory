@@ -1,8 +1,8 @@
 // 倉管前台：純唯讀展示頁，不用登入。泰山/台中/寄庫/鎖庫都是每天從ERP拉的即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection
-} from './front-common.js?v=33';
+  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery
+} from './front-common.js?v=34';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -166,6 +166,17 @@ function renderLockedStockTable() {
   `).join('');
 }
 lockedStockSearchInput.addEventListener('input', renderLockedStockTable);
+
+// ---------- 歷史 ----------
+
+wireHistoryQuery({
+  dateInput: document.getElementById('historyDateInput'),
+  typeSelect: document.getElementById('historyTypeSelect'),
+  loadBtn: document.getElementById('historyLoadBtn'),
+  count: document.getElementById('historyCount'),
+  tableHead: document.getElementById('historyTableHead'),
+  tableBody: document.getElementById('historyTableBody')
+});
 
 // ---------- 分頁切換 ----------
 
