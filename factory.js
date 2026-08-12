@@ -71,7 +71,7 @@ function renderAvailableMaterialTable() {
 
 function renderLockedStockTable() {
   const keyword = lockedStockSearchInput.value.trim().toLowerCase();
-  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   if (keyword) {
     items = items.filter(r =>
       (r.itemCode || '').toLowerCase().includes(keyword) ||

@@ -462,7 +462,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
 
   const totalCount = currentStock.filter(s =>
     s.warehouse === warehouse &&
@@ -610,7 +610,7 @@ function renderItemReferenceTable() {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
 
   referenceCount.textContent = currentItemReference.length
     ? (keyword ? `共 ${currentItemReference.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentItemReference.length} 筆`)
@@ -685,7 +685,7 @@ function renderSummaryTable() {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
 
   summaryCount.textContent = currentSummary.length
     ? (keyword ? `共 ${currentSummary.length} 個品項，篩選後 ${items.length} 筆` : `共 ${currentSummary.length} 個品項`)
@@ -727,7 +727,7 @@ function renderBatchTable() {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '') || (a.batchNo || '').localeCompare(b.batchNo || ''));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }) || (a.batchNo || '').localeCompare(b.batchNo || ''));
 
   batchCount.textContent = currentBatchList.length
     ? (keyword ? `共 ${currentBatchList.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentBatchList.length} 筆`)
@@ -916,7 +916,7 @@ consignLedgerTableBody.addEventListener('click', async e => {
 
 function renderLockedStockTable() {
   const keyword = lockedStockSearchInput.value.trim().toLowerCase();
-  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   if (keyword) {
     items = items.filter(r =>
       (r.itemCode || '').toLowerCase().includes(keyword) ||
