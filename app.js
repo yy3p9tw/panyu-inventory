@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=28';
+import { auth } from './firebase-config.js?v=29';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -18,8 +18,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   clearDailyErpData
-} from './inventory-service.js?v=28';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=28';
+} from './inventory-service.js?v=29';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=29';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -757,7 +757,16 @@ function consignmentLedgerSummary(customer, itemCode, warehouse) {
 
 function renderConsignmentTable() {
   const keyword = consignmentSearchInput.value.trim().toLowerCase();
-  let items = currentConsignment;
+
+  // 品號+客戶 -> 未核完調整加總（來自異動分頁，庫別欄位對不到泰山/台中時代表在動客戶的寄庫帳）
+  const adjustmentByKey = new Map();
+  currentPendingAdjustments.forEach(a => {
+    const key = `${a.itemCode}__${a.warehouse}`;
+    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
+  });
+
+  // 寄庫數量0的品項不用顯示（寄庫數量=泰山+台中，0代表這筆已經沒有寄庫中的貨了）
+  let items = currentConsignment.filter(r => r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0) !== 0);
   if (keyword) {
     items = items.filter(it =>
       (it.customer || '').toLowerCase().includes(keyword) ||
@@ -766,21 +775,15 @@ function renderConsignmentTable() {
   }
   items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
-  consignmentCount.textContent = currentConsignment.length
-    ? (keyword ? `共 ${currentConsignment.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentConsignment.length} 筆`)
+  const totalCount = currentConsignment.filter(r => r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0) !== 0).length;
+  consignmentCount.textContent = totalCount
+    ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
     : '目前沒有寄庫資料，請先到「匯入資料」上傳 ERP 檔案';
 
   if (items.length === 0) {
     consignmentTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
     return;
   }
-
-  // 品號+客戶 -> 未核完調整加總（來自異動分頁，庫別欄位對不到泰山/台中時代表在動客戶的寄庫帳）
-  const adjustmentByKey = new Map();
-  currentPendingAdjustments.forEach(a => {
-    const key = `${a.itemCode}__${a.warehouse}`;
-    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
-  });
 
   const ledgerCell = (customer, itemCode, itemName, warehouse) => {
     const summary = consignmentLedgerSummary(customer, itemCode, warehouse);

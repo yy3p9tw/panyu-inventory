@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=28';
+import { db } from './firebase-config.js?v=29';
 import {
   collection,
   onSnapshot,
