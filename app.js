@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=23';
+import { auth } from './firebase-config.js?v=24';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -18,8 +18,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   subscribeToRawImport, replaceRawImport
-} from './inventory-service.js?v=23';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=23';
+} from './inventory-service.js?v=24';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=24';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -559,10 +559,12 @@ function renderFactoryMaterialTable() {
 // 標記欄位讀 itemReference collection 的 tag 欄位，唯讀顯示——要改標記到「參照」分頁改，不要在這裡重複編輯。
 // 過期/報廢沒有可靠來源（原始資料裡一直是空的），不顯示。
 function renderAvailableMaterialTable() {
-  // 庫存0的品項不用顯示
-  const taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0);
+  const tagByCode = new Map(currentItemReference.map(r => [r.itemCode, r.tag]));
+
+  // 庫存0的品項、沒有標記的品項都不用顯示
+  const taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0 && tagByCode.get(s.itemCode));
   if (!taishanStock.length) {
-    availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料，請先到「匯入資料」上傳庫存.xlsx</td></tr>`;
+    availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
   }
 
@@ -572,7 +574,6 @@ function renderAvailableMaterialTable() {
     if (!batchesByCode.has(b.itemCode)) batchesByCode.set(b.itemCode, []);
     batchesByCode.get(b.itemCode).push(b);
   });
-  const tagByCode = new Map(currentItemReference.map(r => [r.itemCode, r.tag]));
 
   const sorted = [...taishanStock].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
   availableMaterialTableBody.innerHTML = sorted.map(r => {
