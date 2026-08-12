@@ -176,6 +176,10 @@ main {
     white-space: normal;
     word-break: break-word;
   }
+  .data-table td.qty-cell {
+    white-space: nowrap;
+    word-break: normal;
+  }
 }
 
 .role-checkboxes {

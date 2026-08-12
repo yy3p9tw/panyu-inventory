@@ -33,7 +33,7 @@ function renderFactoryMaterialTable() {
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${r.qty}</td>
+      <td class="qty-cell">${r.qty}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
@@ -59,7 +59,7 @@ function renderAvailableMaterialTable() {
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${r.qty}</td>
+      <td class="qty-cell">${r.qty}</td>
       <td>${renderBatchCell(batches)}</td>
       <td>${tag ? escapeHTML(tag) : '-'}</td>
     </tr>
@@ -90,7 +90,7 @@ function renderLockedStockTable() {
       <td>${escapeHTML(r.itemName)}</td>
       <td>${escapeHTML(r.warehouse)}</td>
       <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
-      <td>${r.lockedQty}</td>
+      <td class="qty-cell">${r.lockedQty}</td>
       <td>${r.remark ? escapeHTML(r.remark) : ''}</td>
     </tr>
   `).join('');

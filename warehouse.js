@@ -66,7 +66,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     return `
     <tr>
       <td>${escapeHTML(s.itemName)}</td>
-      <td>${renderQtyCell(s.qty, adjustment, lockInfo, s.expired, s.isSplit)}</td>
+      <td class="qty-cell">${renderQtyCell(s.qty, adjustment, lockInfo, s.expired, s.isSplit)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
@@ -126,9 +126,9 @@ function renderConsignmentTable() {
     <tr>
       <td>${escapeHTML(r.customer)}</td>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${displayQty}</td>
-      <td>${consignmentLedgerTotal(r.customer, r.itemCode, '泰山')}</td>
-      <td>${consignmentLedgerTotal(r.customer, r.itemCode, '台中')}</td>
+      <td class="qty-cell">${displayQty}</td>
+      <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemCode, '泰山')}</td>
+      <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemCode, '台中')}</td>
     </tr>
   `;
   }).join('');
@@ -158,7 +158,7 @@ function renderLockedStockTable() {
       <td>${escapeHTML(r.itemName)}</td>
       <td>${escapeHTML(r.warehouse)}</td>
       <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
-      <td>${r.lockedQty}</td>
+      <td class="qty-cell">${r.lockedQty}</td>
       <td>${r.remark ? escapeHTML(r.remark) : ''}</td>
     </tr>
   `).join('');
