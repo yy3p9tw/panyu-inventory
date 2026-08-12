@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>倉管即時庫存</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=31" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>倉管即時庫存</h1>
+  </header>
+
+  <main>
+    <div id="appContent">
+      <div class="tab-row" id="tabRow">
+        <button type="button" class="tab-btn active" data-tab="taishan">泰山</button>
+        <button type="button" class="tab-btn" data-tab="taichung">台中</button>
+        <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
+        <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
+      </div>
+
+      <!-- 泰山 -->
+      <section id="tabTaishan" class="tab-panel">
+        <div class="panel">
+          <input type="text" id="taishanSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="taishanSummary"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>庫存</th><th>最短效期</th></tr>
+              </thead>
+              <tbody id="taishanTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 台中 -->
+      <section id="tabTaichung" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <input type="text" id="taichungSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="taichungSummary"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>庫存</th><th>最短效期</th></tr>
+              </thead>
+              <tbody id="taichungTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 寄庫 -->
+      <section id="tabConsignment" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <p class="hint-text">寄庫數量是 ERP 給的客戶+品項總數。泰山/台中兩欄是人工手動記錄的細分。</p>
+          <input type="text" id="consignmentSearchInput" placeholder="搜尋客戶或品名..." />
+          <p class="hint-text" id="consignmentCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>客戶</th><th>品名</th><th>寄庫數量</th><th>泰山</th><th>台中</th></tr>
+              </thead>
+              <tbody id="consignmentTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 鎖庫 -->
+      <section id="tabLockedStock" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <p class="hint-text" id="lockedStockCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>倉庫</th><th>標籤</th><th>鎖庫數量</th><th>備註</th></tr>
+              </thead>
+              <tbody id="lockedStockTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="warehouse.js?v=31"></script>
+</body>
+</html>

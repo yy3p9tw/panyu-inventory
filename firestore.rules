@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 前台（倉管/廠務唯讀展示頁，不用登入）需要公開讀取的 collection。
+    // 寫入還是只有登入的帳號（後台管理系統）才能做，前台本身完全唯讀。
+    match /stock/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /batchList/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /consignment/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /consignmentLedger/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /lockedStock/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /factoryMaterial/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /itemReference/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /pendingAdjustments/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // 其他 collection（使用者資料、每日快照、彙總...）維持原本規則：只有登入才能讀寫。
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

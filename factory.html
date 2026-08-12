@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>廠務即時物料</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=31" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>廠務即時物料</h1>
+  </header>
+
+  <main>
+    <div id="appContent">
+      <div class="tab-row" id="tabRow">
+        <button type="button" class="tab-btn active" data-tab="factory">廠務用料</button>
+        <button type="button" class="tab-btn" data-tab="availableMaterial">可用原料(泰山)</button>
+        <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
+      </div>
+
+      <!-- 廠務用料 -->
+      <section id="tabFactory" class="tab-panel">
+        <div class="panel">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品名</th><th>數量</th><th>最短效期</th></tr>
+              </thead>
+              <tbody id="factoryMaterialTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 可用原料(泰山) -->
+      <section id="tabAvailableMaterial" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <p class="hint-text">就是泰山的庫存，只顯示有標記的品項。</p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品名</th><th>數量</th><th>批號</th><th>標記</th></tr>
+              </thead>
+              <tbody id="availableMaterialTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 鎖庫 -->
+      <section id="tabLockedStock" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <p class="hint-text" id="lockedStockCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>倉庫</th><th>標籤</th><th>鎖庫數量</th><th>備註</th></tr>
+              </thead>
+              <tbody id="lockedStockTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="factory.js?v=31"></script>
+</body>
+</html>
