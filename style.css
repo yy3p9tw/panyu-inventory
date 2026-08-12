@@ -183,6 +183,14 @@ main {
   }
 }
 
+/* 泰山/台中即時庫存表：固定欄寬比例，兩個分頁的表格才會長得一樣，不會因為內容長短而跑版 */
+.wh-stock-table {
+  table-layout: fixed;
+}
+.wh-stock-table th:nth-child(1), .wh-stock-table td:nth-child(1) { width: 46%; }
+.wh-stock-table th:nth-child(2), .wh-stock-table td:nth-child(2) { width: 24%; }
+.wh-stock-table th:nth-child(3), .wh-stock-table td:nth-child(3) { width: 30%; }
+
 .role-checkboxes {
   display: flex;
   flex-wrap: wrap;
