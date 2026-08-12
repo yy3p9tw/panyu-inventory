@@ -1,5 +1,5 @@
 // 前台展示頁共用的小工具：純讀取、不需要登入。
-import { db } from './firebase-config.js?v=31';
+import { db } from './firebase-config.js?v=32';
 import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 export function escapeHTML(str) {

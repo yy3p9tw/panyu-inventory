@@ -1,6 +1,6 @@
 // 廠務前台：純唯讀展示頁，不用登入。廠務用料/可用原料(泰山)/鎖庫都是即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
-import { escapeHTML, renderBatchCell, buildBatchesByCode, subscribeCollection } from './front-common.js?v=31';
+import { escapeHTML, renderBatchCell, buildBatchesByCode, subscribeCollection } from './front-common.js?v=32';
 
 const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');
 const availableMaterialTableBody = document.getElementById('availableMaterialTableBody');
