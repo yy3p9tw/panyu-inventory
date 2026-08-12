@@ -169,6 +169,15 @@ main {
   white-space: nowrap;
 }
 
+@media (max-width: 600px) {
+  .data-table th, .data-table td {
+    padding: 6px 6px;
+    font-size: 12px;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
 .role-checkboxes {
   display: flex;
   flex-wrap: wrap;
