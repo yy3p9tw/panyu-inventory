@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=31';
+import { auth } from './firebase-config.js?v=33';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -18,8 +18,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   clearDailyErpData
-} from './inventory-service.js?v=31';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=31';
+} from './inventory-service.js?v=33';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -58,7 +58,9 @@ const historyTableBody = document.getElementById('historyTableBody');
 
 const usersTableBody = document.getElementById('usersTableBody');
 
+const factoryMaterialSearchInput = document.getElementById('factoryMaterialSearchInput');
 const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');
+const availableMaterialSearchInput = document.getElementById('availableMaterialSearchInput');
 const availableMaterialTableBody = document.getElementById('availableMaterialTableBody');
 
 const referenceSearchInput = document.getElementById('referenceSearchInput');
@@ -93,6 +95,7 @@ const lockedStockNewTag = document.getElementById('lockedStockNewTag');
 const lockedStockNewQty = document.getElementById('lockedStockNewQty');
 const lockedStockNewRemark = document.getElementById('lockedStockNewRemark');
 const lockedStockAddBtn = document.getElementById('lockedStockAddBtn');
+const lockedStockSearchInput = document.getElementById('lockedStockSearchInput');
 const lockedStockCount = document.getElementById('lockedStockCount');
 const lockedStockTableBody = document.getElementById('lockedStockTableBody');
 
@@ -509,8 +512,10 @@ taichungSearchInput.addEventListener('input', renderTaichungTable);
 // （每個資料類型都對應各自一份 ERP 匯出檔，不靠組合檔的公式）。renderBatchCell 只顯示最短那個，
 // 同品項其他批號收在「還有 N 筆」點開才看得到。
 function renderFactoryMaterialTable() {
+  const keyword = factoryMaterialSearchInput.value.trim().toLowerCase();
   // 數量0的品項不用顯示
-  const withStock = currentFactoryMaterial.filter(r => r.qty !== 0);
+  let withStock = currentFactoryMaterial.filter(r => r.qty !== 0);
+  if (keyword) withStock = withStock.filter(r => (r.itemName || '').toLowerCase().includes(keyword));
   if (!withStock.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
@@ -539,10 +544,12 @@ function renderFactoryMaterialTable() {
 // 標記欄位讀 itemReference collection 的 tag 欄位，唯讀顯示——要改標記到「參照」分頁改，不要在這裡重複編輯。
 // 過期/報廢沒有可靠來源（原始資料裡一直是空的），不顯示。
 function renderAvailableMaterialTable() {
+  const keyword = availableMaterialSearchInput.value.trim().toLowerCase();
   const tagByCode = new Map(currentItemReference.map(r => [r.itemCode, r.tag]));
 
   // 庫存0的品項、沒有標記的品項都不用顯示
-  const taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0 && tagByCode.get(s.itemCode));
+  let taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0 && tagByCode.get(s.itemCode));
+  if (keyword) taishanStock = taishanStock.filter(s => (s.itemName || '').toLowerCase().includes(keyword));
   if (!taishanStock.length) {
     availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
@@ -569,6 +576,9 @@ function renderAvailableMaterialTable() {
   `;
   }).join('');
 }
+
+factoryMaterialSearchInput.addEventListener('input', renderFactoryMaterialTable);
+availableMaterialSearchInput.addEventListener('input', renderAvailableMaterialTable);
 
 // ---------- 參照（品項主檔，人工維護，逐欄位可編輯） ----------
 
@@ -905,9 +915,18 @@ consignLedgerTableBody.addEventListener('click', async e => {
 // ---------- 鎖庫（ERP 沒有這份資料，人工維護，逐筆新增/編輯/刪除） ----------
 
 function renderLockedStockTable() {
-  const items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  const keyword = lockedStockSearchInput.value.trim().toLowerCase();
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  if (keyword) {
+    items = items.filter(r =>
+      (r.itemCode || '').toLowerCase().includes(keyword) ||
+      (r.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
 
-  lockedStockCount.textContent = items.length ? `共 ${items.length} 筆` : '目前沒有鎖庫中的品項';
+  lockedStockCount.textContent = currentLockedStock.length
+    ? (keyword ? `共 ${currentLockedStock.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentLockedStock.length} 筆`)
+    : '目前沒有鎖庫中的品項';
 
   if (items.length === 0) {
     lockedStockTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
@@ -958,6 +977,8 @@ lockedStockTableBody.addEventListener('click', async e => {
     alert('刪除失敗：' + err.message);
   }
 });
+
+lockedStockSearchInput.addEventListener('input', renderLockedStockTable);
 
 lockedStockAddBtn.addEventListener('click', async () => {
   const itemCode = lockedStockNewCode.value.trim();

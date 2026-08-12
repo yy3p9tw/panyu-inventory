@@ -2,7 +2,7 @@
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
   escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection
-} from './front-common.js?v=32';
+} from './front-common.js?v=33';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -16,6 +16,7 @@ const consignmentSearchInput = document.getElementById('consignmentSearchInput')
 const consignmentTableBody = document.getElementById('consignmentTableBody');
 const consignmentCount = document.getElementById('consignmentCount');
 
+const lockedStockSearchInput = document.getElementById('lockedStockSearchInput');
 const lockedStockCount = document.getElementById('lockedStockCount');
 const lockedStockTableBody = document.getElementById('lockedStockTableBody');
 
@@ -138,8 +139,17 @@ consignmentSearchInput.addEventListener('input', renderConsignmentTable);
 // ---------- 鎖庫 ----------
 
 function renderLockedStockTable() {
-  const items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
-  lockedStockCount.textContent = items.length ? `共 ${items.length} 筆` : '目前沒有鎖庫中的品項';
+  const keyword = lockedStockSearchInput.value.trim().toLowerCase();
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  if (keyword) {
+    items = items.filter(r =>
+      (r.itemCode || '').toLowerCase().includes(keyword) ||
+      (r.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
+  lockedStockCount.textContent = currentLockedStock.length
+    ? (keyword ? `共 ${currentLockedStock.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentLockedStock.length} 筆`)
+    : '目前沒有鎖庫中的品項';
   if (items.length === 0) {
     lockedStockTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
@@ -155,6 +165,7 @@ function renderLockedStockTable() {
     </tr>
   `).join('');
 }
+lockedStockSearchInput.addEventListener('input', renderLockedStockTable);
 
 // ---------- 分頁切換 ----------
 

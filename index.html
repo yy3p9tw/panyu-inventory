@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=31" />
+  <link rel="stylesheet" href="style.css?v=33" />
 </head>
 <body>
   <header class="site-header">
@@ -82,6 +82,7 @@
       <section id="tabFactory" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>廠務用料</h2>
+          <input type="text" id="factoryMaterialSearchInput" placeholder="搜尋品名..." />
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -98,6 +99,7 @@
         <div class="panel">
           <h2>可用原料（泰山）</h2>
           <p class="hint-text">就是泰山的庫存，只顯示有標記的品項。批號即時去對批號.xlsx（泰山廠區）查出來。標記是唯讀顯示，要改標記請到「參照」分頁。</p>
+          <input type="text" id="availableMaterialSearchInput" placeholder="搜尋品名..." />
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -251,6 +253,7 @@
             <button type="button" id="lockedStockAddBtn">新增鎖庫</button>
           </div>
 
+          <input type="text" id="lockedStockSearchInput" placeholder="搜尋品號或品名..." />
           <p class="hint-text" id="lockedStockCount"></p>
           <div class="table-scroll">
             <table class="data-table">
@@ -354,6 +357,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=31"></script>
+  <script type="module" src="app.js?v=33"></script>
 </body>
 </html>

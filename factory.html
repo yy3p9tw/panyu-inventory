@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=32" />
+  <link rel="stylesheet" href="style.css?v=33" />
 </head>
 <body>
   <header class="site-header">
@@ -25,6 +25,7 @@
       <!-- 廠務用料 -->
       <section id="tabFactory" class="tab-panel">
         <div class="panel">
+          <input type="text" id="factoryMaterialSearchInput" placeholder="搜尋品名..." />
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -40,6 +41,7 @@
       <section id="tabAvailableMaterial" class="tab-panel" style="display:none;">
         <div class="panel">
           <p class="hint-text">就是泰山的庫存，只顯示有標記的品項。</p>
+          <input type="text" id="availableMaterialSearchInput" placeholder="搜尋品名..." />
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -54,6 +56,7 @@
       <!-- 鎖庫 -->
       <section id="tabLockedStock" class="tab-panel" style="display:none;">
         <div class="panel">
+          <input type="text" id="lockedStockSearchInput" placeholder="搜尋品號或品名..." />
           <p class="hint-text" id="lockedStockCount"></p>
           <div class="table-scroll">
             <table class="data-table">
@@ -68,6 +71,6 @@
     </div>
   </main>
 
-  <script type="module" src="factory.js?v=32"></script>
+  <script type="module" src="factory.js?v=33"></script>
 </body>
 </html>
