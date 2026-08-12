@@ -1,7 +1,7 @@
 // 庫存資料存取層：讀寫 Firestore 的 stock collection。
 // 一筆文件 = 一個品項在一個倉庫的庫存現況（品號 + 倉庫 唯一決定一筆）。
 
-import { db } from './firebase-config.js?v=27';
+import { db } from './firebase-config.js?v=28';
 import {
   collection,
   onSnapshot,
@@ -200,6 +200,18 @@ export async function replaceBatchList(records) {
     }
   }));
   return replaceWholeCollection('batchList', docs);
+}
+
+// 泰山/台中庫存、廠務用料、批號都是每天從ERP重新拉的資料，開始新的一天、要匯入新檔案之前，
+// 可以先一鍵清空，不用等匯入才刪掉舊資料。可用原料(泰山)不用另外清，它是從泰山庫存即時算出來的，
+// 泰山清空它自然就跟著空了。
+export async function clearDailyErpData() {
+  const [stock, factoryMaterial, batchList] = await Promise.all([
+    replaceWholeCollection('stock', []),
+    replaceWholeCollection('factoryMaterial', []),
+    replaceWholeCollection('batchList', [])
+  ]);
+  return { stock: stock.deleted, factoryMaterial: factoryMaterial.deleted, batchList: batchList.deleted };
 }
 
 // ---------- 寄庫：每次匯入完全覆蓋 ----------

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=27" />
+  <link rel="stylesheet" href="style.css?v=28" />
 </head>
 <body>
   <header class="site-header">
@@ -281,6 +281,13 @@
             <button type="button" id="saveSnapshotBtn">今天完成，存檔今日快照</button>
             <p class="hint-text" id="saveSnapshotMsg"></p>
           </div>
+
+          <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--color-border);">
+            <h2>開始新的一天</h2>
+            <p class="hint-text">泰山/台中庫存、廠務用料、批號都是每天從 ERP 重新拉的資料。要匯入新的一天的檔案之前，可以先按這個按鈕一鍵清空舊資料（可用原料(泰山)不用另外清，泰山庫存清空它自然就跟著空了）。這個動作會直接刪除資料庫裡的資料，沒辦法復原。</p>
+            <button type="button" id="clearDailyBtn" style="background:var(--color-danger); color:#fff;">清空泰山/台中/廠務用料/批號</button>
+            <p class="hint-text" id="clearDailyMsg"></p>
+          </div>
         </div>
       </section>
 
@@ -343,6 +350,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=27"></script>
+  <script type="module" src="app.js?v=28"></script>
 </body>
 </html>

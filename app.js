@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=27';
+import { auth } from './firebase-config.js?v=28';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -16,9 +16,10 @@ import {
   subscribeToConsignmentLedger, addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
-  saveDailySnapshot, loadDailySnapshot
-} from './inventory-service.js?v=27';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=27';
+  saveDailySnapshot, loadDailySnapshot,
+  clearDailyErpData
+} from './inventory-service.js?v=28';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=28';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -45,6 +46,8 @@ const importMsg = document.getElementById('importMsg');
 const importItemsList = document.getElementById('importItemsList');
 const saveSnapshotBtn = document.getElementById('saveSnapshotBtn');
 const saveSnapshotMsg = document.getElementById('saveSnapshotMsg');
+const clearDailyBtn = document.getElementById('clearDailyBtn');
+const clearDailyMsg = document.getElementById('clearDailyMsg');
 
 const historyDateInput = document.getElementById('historyDateInput');
 const historyTypeSelect = document.getElementById('historyTypeSelect');
@@ -1602,6 +1605,26 @@ saveSnapshotBtn.addEventListener('click', async () => {
     saveSnapshotMsg.textContent = '存檔失敗：' + err.message;
   } finally {
     saveSnapshotBtn.disabled = false;
+  }
+});
+
+// 泰山/台中庫存、廠務用料、批號都是每天從ERP重新拉的，開始新的一天可以先一鍵清空，
+// 不用等匯入新檔案才自然覆蓋掉舊資料。這是刪除動作，要求再打一次「清空」確認，避免手滑。
+clearDailyBtn.addEventListener('click', async () => {
+  if (!confirm('確定要清空泰山/台中庫存、廠務用料、批號嗎？這個動作會直接刪除資料庫裡的資料，沒辦法復原。')) return;
+  if (prompt('請再輸入「清空」兩個字確認：') !== '清空') {
+    alert('沒有輸入正確，已取消');
+    return;
+  }
+  clearDailyBtn.disabled = true;
+  clearDailyMsg.textContent = '清空中...';
+  try {
+    const result = await clearDailyErpData();
+    clearDailyMsg.textContent = `已清空：庫存 ${result.stock} 筆、廠務用料 ${result.factoryMaterial} 筆、批號 ${result.batchList} 筆。`;
+  } catch (err) {
+    clearDailyMsg.textContent = '清空失敗：' + err.message;
+  } finally {
+    clearDailyBtn.disabled = false;
   }
 });
 
