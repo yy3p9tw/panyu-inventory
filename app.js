@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=30';
+import { auth } from './firebase-config.js?v=31';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -18,8 +18,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   clearDailyErpData
-} from './inventory-service.js?v=30';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=30';
+} from './inventory-service.js?v=31';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=31';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -77,7 +77,7 @@ const consignmentSearchInput = document.getElementById('consignmentSearchInput')
 const consignmentTableBody = document.getElementById('consignmentTableBody');
 const consignmentCount = document.getElementById('consignmentCount');
 
-const consignLedgerPanel = document.getElementById('consignLedgerPanel');
+const consignLedgerModal = document.getElementById('consignLedgerModal');
 const consignLedgerTitle = document.getElementById('consignLedgerTitle');
 const consignLedgerCloseBtn = document.getElementById('consignLedgerCloseBtn');
 const consignLedgerNewDate = document.getElementById('consignLedgerNewDate');
@@ -852,14 +852,24 @@ consignmentTableBody.addEventListener('click', e => {
   consignLedgerNewDate.value = todayDateString();
   consignLedgerNewQty.value = '';
   consignLedgerNewRemark.value = '';
-  consignLedgerPanel.style.display = '';
+  consignLedgerModal.style.display = 'flex';
   renderConsignLedgerPanel();
-  consignLedgerPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 });
 
-consignLedgerCloseBtn.addEventListener('click', () => {
+function closeConsignLedgerModal() {
   consignLedgerSelection = null;
-  consignLedgerPanel.style.display = 'none';
+  consignLedgerModal.style.display = 'none';
+}
+
+consignLedgerCloseBtn.addEventListener('click', closeConsignLedgerModal);
+
+// 點彈窗外面的半透明背景也可以關閉
+consignLedgerModal.addEventListener('click', e => {
+  if (e.target === consignLedgerModal) closeConsignLedgerModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && consignLedgerModal.style.display !== 'none') closeConsignLedgerModal();
 });
 
 consignLedgerAddBtn.addEventListener('click', async () => {
