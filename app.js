@@ -1,6 +1,6 @@
 // 庫存管理系統：登入後才能使用，登入、匯入、查詢都在同一頁。
 // 畫面上的分頁跟資料欄位，依登入者的角色顯示不同內容。
-import { auth } from './firebase-config.js?v=29';
+import { auth } from './firebase-config.js?v=30';
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -18,8 +18,8 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   clearDailyErpData
-} from './inventory-service.js?v=29';
-import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=29';
+} from './inventory-service.js?v=30';
+import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=30';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const loginBox = document.getElementById('loginBox');
@@ -787,7 +787,7 @@ function renderConsignmentTable() {
 
   const ledgerCell = (customer, itemCode, itemName, warehouse) => {
     const summary = consignmentLedgerSummary(customer, itemCode, warehouse);
-    const text = summary ? String(summary.total) : '尚無紀錄';
+    const text = summary ? String(summary.total) : '0';
     return `<button type="button" class="secondary consign-ledger-open-btn" data-customer="${escapeHTML(customer)}" data-item-code="${escapeHTML(itemCode)}" data-item-name="${escapeHTML(itemName)}" data-warehouse="${warehouse}" style="font-size:13px; padding:4px 8px;">${escapeHTML(text)}</button>`;
   };
 
