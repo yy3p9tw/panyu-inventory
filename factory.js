@@ -48,20 +48,18 @@ function renderAvailableMaterialTable() {
   let taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0 && tagByCode.get(s.itemCode));
   if (keyword) taishanStock = taishanStock.filter(s => (s.itemName || '').toLowerCase().includes(keyword));
   if (!taishanStock.length) {
-    availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    availableMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
   }
   const batchesByCode = buildBatchesByCode(currentBatchList, '泰山');
   const sorted = [...taishanStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   availableMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
-    const tag = tagByCode.get(r.itemCode) || '';
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
       <td class="qty-cell">${r.qty}</td>
       <td>${renderBatchCell(batches)}</td>
-      <td>${tag ? escapeHTML(tag) : '-'}</td>
     </tr>
   `;
   }).join('');
