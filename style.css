@@ -177,8 +177,9 @@ main {
     word-break: break-word;
   }
   .data-table td.qty-cell {
-    white-space: nowrap;
-    word-break: normal;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: normal;
   }
 }
 
