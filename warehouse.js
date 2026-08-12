@@ -55,7 +55,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     : '目前沒有資料';
 
   if (items.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
     return;
   }
 
@@ -65,7 +65,6 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     const lockInfo = lockByCode.get(s.itemCode);
     return `
     <tr>
-      <td>${escapeHTML(s.itemCode)}</td>
       <td>${escapeHTML(s.itemName)}</td>
       <td>${renderQtyCell(s.qty, adjustment, lockInfo, s.expired, s.isSplit)}</td>
       <td>${renderBatchCell(batches)}</td>
@@ -151,12 +150,11 @@ function renderLockedStockTable() {
     ? (keyword ? `共 ${currentLockedStock.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentLockedStock.length} 筆`)
     : '目前沒有鎖庫中的品項';
   if (items.length === 0) {
-    lockedStockTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
+    lockedStockTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
     return;
   }
   lockedStockTableBody.innerHTML = items.map(r => `
     <tr>
-      <td>${escapeHTML(r.itemCode)}</td>
       <td>${escapeHTML(r.itemName)}</td>
       <td>${escapeHTML(r.warehouse)}</td>
       <td>${r.tag ? escapeHTML(r.tag) : ''}</td>
