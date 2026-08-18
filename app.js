@@ -1063,6 +1063,18 @@ function findColumnIndex(headerRow, names) {
   return -1;
 }
 
+// 有些匯出檔同一個欄名左右各出現一次（例如組合.xlsx的「包裝數量」成品/元件各一欄），
+// 用範圍限定只找某個區段內的那一個
+function findColumnIndexInRange(headerRow, names, fromIndex, toIndex) {
+  const end = toIndex === undefined ? headerRow.length : toIndex;
+  for (const name of names) {
+    for (let i = fromIndex; i < end; i++) {
+      if ((headerRow[i] || '').toString().trim() === name) return i;
+    }
+  }
+  return -1;
+}
+
 function isRealItemCode(code) {
   return /^[A-Za-z0-9]+$/.test(code || '');
 }
@@ -1263,6 +1275,43 @@ function parseSalesAdjustments(sheet) {
   return records;
 }
 
+// 組合.xlsx：一列代表一筆「用元件組成成品」的組合單，成品欄位跟元件欄位左右並排在同一列——
+// 「包裝數量」「批號」「單位」這幾個欄名成品/元件各出現一次，用「元件品號」欄位的位置切左右半邊來分辨。
+// 跟其他未核完調整一樣：核完的單據那一列會從匯出檔清空，還留著品號就代表還沒核完。
+// 方向：元件出庫（扣元件所在倉庫的庫存）、成品入庫（加成品所在倉庫的庫存）。
+function parseAssemblyAdjustments(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+  const idxFinishedCode = findColumnIndex(header, ['成品品號']);
+  const idxFinishedWh = findColumnIndex(header, ['入庫庫別']);
+  const idxComponentCode = findColumnIndex(header, ['元件品號']);
+  const idxComponentWh = findColumnIndex(header, ['出庫庫別']);
+  if (idxFinishedCode === -1 || idxFinishedWh === -1 || idxComponentCode === -1 || idxComponentWh === -1) {
+    throw new Error('找不到「成品品號」「入庫庫別」「元件品號」或「出庫庫別」欄位，格式可能跟預期不同');
+  }
+  const idxFinishedQty = findColumnIndexInRange(header, ['包裝數量'], 0, idxComponentCode);
+  const idxComponentQty = findColumnIndexInRange(header, ['包裝數量'], idxComponentCode);
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const finishedCode = (row[idxFinishedCode] || '').toString().trim();
+    if (isRealItemCode(finishedCode)) {
+      const warehouse = normalizeWarehouse(row[idxFinishedWh]);
+      const qty = idxFinishedQty !== -1 ? Number(row[idxFinishedQty]) || 0 : 0;
+      if (warehouse && qty) records.push({ itemCode: finishedCode, warehouse, deltaQty: qty, source: '組合' });
+    }
+    const componentCode = (row[idxComponentCode] || '').toString().trim();
+    if (isRealItemCode(componentCode)) {
+      const warehouse = normalizeWarehouse(row[idxComponentWh]);
+      const qty = idxComponentQty !== -1 ? Number(row[idxComponentQty]) || 0 : 0;
+      if (warehouse && qty) records.push({ itemCode: componentCode, warehouse, deltaQty: -qty, source: '組合' });
+    }
+  }
+  return records;
+}
+
 // 組合檔（1150805庫存YU.xlsx）的「參照 (新)」分頁是人工維護的品項主檔，不是每天變動的 ERP 資料，
 // 可以整批匯入當初始值，之後有需要再到「參照」分頁手動改。只 set/merge、不整批覆蓋，不會洗掉手動改過的其他品項。
 function parseItemReferenceFromMaster(wb) {
@@ -1413,7 +1462,7 @@ function parseConsignmentLedgerFromMaster(wb) {
   return { records, skipped };
 }
 
-// 目前有 6 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/組合/鎖庫還沒有真實檔案樣本，
+// 目前有 7 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/鎖庫還沒有真實檔案樣本，
 // 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
 // 同一個檔名可能對到不只一個項目，所以是列出所有符合的候選，不是只挑第一個。
 const IMPORT_ITEMS = [
@@ -1507,6 +1556,17 @@ const IMPORT_ITEMS = [
       const result = await replacePendingAdjustments(records, ['銷貨']);
       return `已更新銷貨的未核完調整 ${result.written} 筆`;
     }
+  },
+  {
+    key: 'assembly',
+    label: '組合（未核完調整）',
+    matchesFilename: name => name === '組合',
+    prepare: wb => parseAssemblyAdjustments(firstSheet(wb)),
+    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上${records.length === 0 ? '（就算是0筆也要按下面「確認匯入」，才會清掉昨天留下的舊資料）' : ''}`,
+    run: async records => {
+      const result = await replacePendingAdjustments(records, ['組合']);
+      return `已更新組合的未核完調整 ${result.written} 筆`;
+    }
   }
 ];
 
@@ -1525,7 +1585,7 @@ async function handleFileSelected(file) {
 
   if (!matched.length) {
     importMsg.style.color = 'var(--color-danger)';
-    importMsg.textContent = `看不懂檔名「${file.name}」，目前支援的檔名：庫存、寄庫、批號、異動、轉撥、銷貨，或含「庫存YU」的整份組合檔（副檔名 .xlsx）`;
+    importMsg.textContent = `看不懂檔名「${file.name}」，目前支援的檔名：庫存、寄庫、批號、異動、轉撥、銷貨、組合，或含「庫存YU」的整份組合檔（副檔名 .xlsx）`;
     return;
   }
 
