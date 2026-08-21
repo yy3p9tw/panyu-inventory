@@ -1,8 +1,8 @@
 // 倉管前台：純唯讀展示頁，不用登入。泰山/台中/寄庫/鎖庫都是每天從ERP拉的即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery
-} from './front-common.js?v=34';
+  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
+} from './front-common.js?v=35';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -88,7 +88,7 @@ function consignmentLedgerTotal(customer, itemCode, warehouse) {
   const entries = currentConsignmentLedger.filter(l =>
     l.customer === customer && l.itemCode === itemCode && l.warehouse === warehouse
   );
-  return entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
+  return formatQty(entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0));
 }
 
 function renderConsignmentTable() {
@@ -121,7 +121,7 @@ function renderConsignmentTable() {
 
   consignmentTableBody.innerHTML = items.map(r => {
     const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
-    const displayQty = r.qty + adjustment;
+    const displayQty = formatQty(r.qty + adjustment);
     return `
     <tr>
       <td>${escapeHTML(r.customer)}</td>

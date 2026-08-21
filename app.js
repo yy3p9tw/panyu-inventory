@@ -386,6 +386,12 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
+// 有些數量是加減多筆數字湊出來的（例如庫存+未核完調整），JS浮點數運算偶爾會冒出7.200000000000001
+// 這種尾數雜訊，顯示前先四捨五入到小數點後2位清乾淨
+function formatQty(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 // 批號是 YYYYMMDD，字串排序就是時間排序。只顯示最短（最早到期）那個批號，
 // 同品項其他批號收在「還有 N 筆」點開才看得到，不要一次全部列出來。
 function renderBatchCell(batches) {
@@ -410,7 +416,7 @@ function renderQtyCell(s, adjustment, lockInfo) {
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
   // 未核完調整還是照樣算進 displayQty（銷貨/異動/調撥裡還沒核准的單據，數字已經扣好/加好了），
   // 只是不再顯示「未核完」標籤——使用者反應看到這個標籤反而會懷疑數字是不是還沒扣，造成誤會。
-  const displayQty = s.qty + (adjustment || 0);
+  const displayQty = formatQty(s.qty + (adjustment || 0));
   return `${displayQty}${badges.length ? ' ' + badges.join(' ') : ''}`;
 }
 
@@ -533,7 +539,7 @@ function renderFactoryMaterialTable() {
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${r.qty}</td>
+      <td>${formatQty(r.qty)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
@@ -569,7 +575,7 @@ function renderAvailableMaterialTable() {
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${r.qty}</td>
+      <td>${formatQty(r.qty)}</td>
       <td>${renderBatchCell(batches)}</td>
       <td>${tag ? escapeHTML(tag) : '-'}</td>
     </tr>
@@ -744,7 +750,7 @@ function renderBatchTable() {
       <td>${escapeHTML(r.itemName)}</td>
       <td>${escapeHTML(r.warehouse)}</td>
       <td>${r.batchNo || '-'}</td>
-      <td>${r.qty}</td>
+      <td>${formatQty(r.qty)}</td>
     </tr>
   `).join('');
 }
@@ -797,14 +803,14 @@ function renderConsignmentTable() {
 
   const ledgerCell = (customer, itemCode, itemName, warehouse) => {
     const summary = consignmentLedgerSummary(customer, itemCode, warehouse);
-    const text = summary ? String(summary.total) : '0';
+    const text = summary ? String(formatQty(summary.total)) : '0';
     return `<button type="button" class="secondary consign-ledger-open-btn" data-customer="${escapeHTML(customer)}" data-item-code="${escapeHTML(itemCode)}" data-item-name="${escapeHTML(itemName)}" data-warehouse="${warehouse}" style="font-size:13px; padding:4px 8px;">${escapeHTML(text)}</button>`;
   };
 
   // 未核完調整照樣算進 displayQty，只是不顯示標籤了（跟泰山/台中同樣的理由，見 renderQtyCell）
   consignmentTableBody.innerHTML = items.map(r => {
     const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
-    const displayQty = r.qty + adjustment;
+    const displayQty = formatQty(r.qty + adjustment);
     return `
     <tr>
       <td>${escapeHTML(r.customer)}</td>

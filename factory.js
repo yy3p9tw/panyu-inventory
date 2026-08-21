@@ -1,6 +1,6 @@
 // 廠務前台：純唯讀展示頁，不用登入。廠務用料/可用原料(泰山)/鎖庫都是即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
-import { escapeHTML, renderBatchCell, buildBatchesByCode, subscribeCollection, wireHistoryQuery } from './front-common.js?v=34';
+import { escapeHTML, renderBatchCell, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty } from './front-common.js?v=35';
 
 const factoryMaterialSearchInput = document.getElementById('factoryMaterialSearchInput');
 const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');
@@ -33,7 +33,7 @@ function renderFactoryMaterialTable() {
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td class="qty-cell">${r.qty}</td>
+      <td class="qty-cell">${formatQty(r.qty)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
@@ -58,7 +58,7 @@ function renderAvailableMaterialTable() {
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td class="qty-cell">${r.qty}</td>
+      <td class="qty-cell">${formatQty(r.qty)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;

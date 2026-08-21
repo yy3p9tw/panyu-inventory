@@ -8,6 +8,12 @@ export function escapeHTML(str) {
   return div.innerHTML;
 }
 
+// 有些數量是加減多筆數字湊出來的（例如庫存+未核完調整），JS浮點數運算偶爾會冒出7.200000000000001
+// 這種尾數雜訊，顯示前先四捨五入到小數點後2位清乾淨
+export function formatQty(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 // 批號是 YYYYMMDD，字串排序就是時間順序。只顯示最短（最早到期）那個批號，
 // 同品項其他批號收在「共 N 筆」點開才看得到。
 export function renderBatchCell(batches) {
@@ -28,7 +34,7 @@ export function renderQtyCell(qty, adjustment, lockInfo, expired, isSplit) {
   }
   if (expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(expired)}</span>`);
   if (isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
-  const displayQty = qty + (adjustment || 0);
+  const displayQty = formatQty(qty + (adjustment || 0));
   return `${displayQty}${badges.length ? ' ' + badges.join(' ') : ''}`;
 }
 
