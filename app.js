@@ -410,7 +410,7 @@ function renderQtyCell(s, adjustment, lockInfo) {
   const badges = [];
   if (lockInfo && lockInfo.total) {
     const title = lockInfo.entries.map(e => `${e.tag || '(無標籤)'} ${e.lockedQty}${e.remark ? '：' + e.remark : ''}`).join('\n');
-    badges.push(`<span class="badge badge-locked" title="${escapeHTML(title)}">鎖庫 ${lockInfo.total}</span>`);
+    badges.push(`<span class="badge badge-locked" title="${escapeHTML(title)}">鎖庫 ${formatQty(lockInfo.total)}</span>`);
   }
   if (s.expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(s.expired)}</span>`);
   if (s.isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);
@@ -459,7 +459,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   let items = currentStock.filter(s => {
     if (s.warehouse !== warehouse) return false;
     if (applyTaishanHideRule && s.hiddenFromTaishanManager) return false;
-    if (s.qty + (adjustmentByCode.get(s.itemCode) || 0) === 0) return false;
+    if (formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) === 0) return false;
     return true;
   });
   if (keyword) {
@@ -473,7 +473,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   const totalCount = currentStock.filter(s =>
     s.warehouse === warehouse &&
     !(applyTaishanHideRule && s.hiddenFromTaishanManager) &&
-    s.qty + (adjustmentByCode.get(s.itemCode) || 0) !== 0
+    formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0
   ).length;
   summaryEl.style.color = '';
   summaryEl.textContent = totalCount
@@ -706,16 +706,16 @@ function renderSummaryTable() {
     <tr>
       <td>${escapeHTML(r.itemCode)}</td>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${r.taishanQty}</td>
-      <td>${r.taichungQty}</td>
-      <td>${r.totalQty}</td>
-      <td>${r.unitWeight}</td>
-      <td>${r.totalWeight}</td>
+      <td>${formatQty(r.taishanQty)}</td>
+      <td>${formatQty(r.taichungQty)}</td>
+      <td>${formatQty(r.totalQty)}</td>
+      <td>${formatQty(r.unitWeight)}</td>
+      <td>${formatQty(r.totalWeight)}</td>
       <td>${escapeHTML(r.purchaseType)}</td>
       <td>${escapeHTML(r.category)}</td>
       <td>${escapeHTML(r.majorCategory)}</td>
       <td>${escapeHTML(r.origin)}</td>
-      <td>${(r.vendors || []).map(v => `${escapeHTML(v.label)} ${v.qty}`).join('，')}</td>
+      <td>${(r.vendors || []).map(v => `${escapeHTML(v.label)} ${formatQty(v.qty)}`).join('，')}</td>
     </tr>
   `).join('');
 }
@@ -782,7 +782,7 @@ function renderConsignmentTable() {
   });
 
   // 寄庫數量0的品項不用顯示（寄庫數量=泰山+台中，0代表這筆已經沒有寄庫中的貨了）
-  let items = currentConsignment.filter(r => r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0) !== 0);
+  let items = currentConsignment.filter(r => formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0)) !== 0);
   if (keyword) {
     items = items.filter(it =>
       (it.customer || '').toLowerCase().includes(keyword) ||
@@ -791,7 +791,7 @@ function renderConsignmentTable() {
   }
   items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
-  const totalCount = currentConsignment.filter(r => r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0) !== 0).length;
+  const totalCount = currentConsignment.filter(r => formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0)) !== 0).length;
   consignmentCount.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
     : '目前沒有寄庫資料，請先到「匯入資料」上傳 ERP 檔案';

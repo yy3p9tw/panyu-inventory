@@ -30,7 +30,7 @@ export function renderQtyCell(qty, adjustment, lockInfo, expired, isSplit) {
   const badges = [];
   if (lockInfo && lockInfo.total) {
     const title = lockInfo.entries.map(e => `${e.tag || '(無標籤)'} ${e.lockedQty}${e.remark ? '：' + e.remark : ''}`).join('\n');
-    badges.push(`<span class="badge badge-locked" title="${escapeHTML(title)}">鎖庫 ${lockInfo.total}</span>`);
+    badges.push(`<span class="badge badge-locked" title="${escapeHTML(title)}">鎖庫 ${formatQty(lockInfo.total)}</span>`);
   }
   if (expired) badges.push(`<span class="badge badge-expired">過期/報廢 ${escapeHTML(expired)}</span>`);
   if (isSplit) badges.push(`<span class="badge badge-split">散裝</span>`);

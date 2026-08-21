@@ -40,7 +40,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   const batchesByCode = buildBatchesByCode(currentBatchList, warehouse);
   const lockByCode = buildLockByCode(currentLockedStock, warehouse);
 
-  let items = currentStock.filter(s => s.warehouse === warehouse && s.qty + (adjustmentByCode.get(s.itemCode) || 0) !== 0);
+  let items = currentStock.filter(s => s.warehouse === warehouse && formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0);
   const totalCount = items.length;
   if (keyword) {
     items = items.filter(it =>
@@ -100,7 +100,7 @@ function renderConsignmentTable() {
     adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
   });
 
-  let items = currentConsignment.filter(r => r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0) !== 0);
+  let items = currentConsignment.filter(r => formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0)) !== 0);
   const totalCount = items.length;
   if (keyword) {
     items = items.filter(it =>
