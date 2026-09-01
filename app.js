@@ -342,6 +342,7 @@ function applyRoleVisibility() {
       renderTaishanTable();
       renderTaichungTable();
       renderConsignmentTable();
+      renderFactoryMaterialTable();
     });
     unsubscribeLockedStock = subscribeToLockedStock(rows => {
       currentLockedStock = rows;
@@ -519,8 +520,14 @@ taichungSearchInput.addEventListener('input', renderTaichungTable);
 // 同品項其他批號收在「還有 N 筆」點開才看得到。
 function renderFactoryMaterialTable() {
   const keyword = factoryMaterialSearchInput.value.trim().toLowerCase();
-  // 數量0的品項不用顯示
-  let withStock = currentFactoryMaterial.filter(r => r.qty !== 0);
+  // 廠務跟泰山/台中一樣，也會有未核完的轉撥（例如廠務轉泰山、泰山轉廠務）要加減到顯示數字上
+  const adjustmentByCode = new Map();
+  currentPendingAdjustments.forEach(a => {
+    if (a.warehouse !== '廠務') return;
+    adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
+  });
+  // 數量(含未核完調整)是0的品項不用顯示
+  let withStock = currentFactoryMaterial.filter(r => formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0)) !== 0);
   if (keyword) withStock = withStock.filter(r => (r.itemName || '').toLowerCase().includes(keyword));
   if (!withStock.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
@@ -536,10 +543,11 @@ function renderFactoryMaterialTable() {
   const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
+    const displayQty = formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0));
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${formatQty(r.qty)}</td>
+      <td>${displayQty}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
@@ -1247,8 +1255,10 @@ function parseTransferAdjustments(sheet) {
     if (!isRealItemCode(code)) continue;
     const qty = Number(row[idxQty]) || 0;
     if (!qty) continue;
-    const outWh = normalizeWarehouse(row[idxOutWh]);
-    const inWh = normalizeWarehouse(row[idxInWh]);
+    // 轉出/轉入庫別除了泰山/台中，也可能是「廠務」（例如廠務轉泰山、泰山轉廠務）——
+    // 正規化不到泰山/台中時，只要原始文字剛好是「廠務」就當廠務本身處理，不要整筆丟掉
+    const outWh = normalizeWarehouse(row[idxOutWh]) || ((row[idxOutWh] || '').toString().trim() === '廠務' ? '廠務' : null);
+    const inWh = normalizeWarehouse(row[idxInWh]) || ((row[idxInWh] || '').toString().trim() === '廠務' ? '廠務' : null);
     if (outWh) records.push({ itemCode: code, warehouse: outWh, deltaQty: -qty, source: '轉撥' });
     if (inWh) records.push({ itemCode: code, warehouse: inWh, deltaQty: qty, source: '轉撥' });
   }

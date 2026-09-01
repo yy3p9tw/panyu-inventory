@@ -15,12 +15,19 @@ let currentBatchList = [];
 let currentFactoryMaterial = [];
 let currentItemReference = [];
 let currentLockedStock = [];
+let currentPendingAdjustments = [];
 
 // ---------- 廠務用料 ----------
 
+// 廠務跟泰山/台中一樣，也會有未核完的轉撥（例如廠務轉泰山、泰山轉廠務）要加減到顯示數字上
 function renderFactoryMaterialTable() {
   const keyword = factoryMaterialSearchInput.value.trim().toLowerCase();
-  let withStock = currentFactoryMaterial.filter(r => r.qty !== 0);
+  const adjustmentByCode = new Map();
+  currentPendingAdjustments.forEach(a => {
+    if (a.warehouse !== '廠務') return;
+    adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
+  });
+  let withStock = currentFactoryMaterial.filter(r => formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0)) !== 0);
   if (keyword) withStock = withStock.filter(r => (r.itemName || '').toLowerCase().includes(keyword));
   if (!withStock.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
@@ -30,10 +37,11 @@ function renderFactoryMaterialTable() {
   const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
+    const displayQty = formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0));
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td class="qty-cell">${formatQty(r.qty)}</td>
+      <td class="qty-cell">${displayQty}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
@@ -126,3 +134,4 @@ subscribeCollection('batchList', rows => { currentBatchList = rows; renderFactor
 subscribeCollection('factoryMaterial', rows => { currentFactoryMaterial = rows; renderFactoryMaterialTable(); });
 subscribeCollection('itemReference', rows => { currentItemReference = rows; renderAvailableMaterialTable(); });
 subscribeCollection('lockedStock', rows => { currentLockedStock = rows; renderLockedStockTable(); });
+subscribeCollection('pendingAdjustments', rows => { currentPendingAdjustments = rows; renderFactoryMaterialTable(); });
