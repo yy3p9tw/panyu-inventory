@@ -1266,15 +1266,17 @@ function parseTransferAdjustments(sheet) {
 }
 
 // 銷貨.xlsx：品號欄位標題實際是「品    號」（字中間有全形空白）
+// 跟庫存.xlsx/批號.xlsx一樣，庫存數字是用包裝數量記的（例如一箱12入），銷貨數量是散裝數字（30件=360KG這種），
+// 要扣就要扣包裝數量，扣散裝的銷貨數量會扣超多、把庫存扣成一大坨負數（真實比對過0901銷貨.xlsx抓到這個問題）。
 function parseSalesAdjustments(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品    號', '品號']);
-  const idxQty = findColumnIndex(header, ['銷貨數量']);
+  const idxQty = findColumnIndex(header, ['包裝數量', '銷貨數量']);
   const idxWh = findColumnIndex(header, ['庫別名稱']);
   if (idxCode === -1 || idxQty === -1 || idxWh === -1) {
-    throw new Error('找不到「品號」「銷貨數量」或「庫別名稱」欄位，格式可能跟預期不同');
+    throw new Error('找不到「品號」「包裝數量/銷貨數量」或「庫別名稱」欄位，格式可能跟預期不同');
   }
 
   const records = [];
