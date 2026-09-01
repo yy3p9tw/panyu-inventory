@@ -469,7 +469,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
   const totalCount = currentStock.filter(s =>
     s.warehouse === warehouse &&
@@ -540,7 +540,7 @@ function renderFactoryMaterialTable() {
     batchesByCode.get(b.itemCode).push(b);
   });
 
-  const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     const displayQty = formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0));
@@ -576,7 +576,7 @@ function renderAvailableMaterialTable() {
     batchesByCode.get(b.itemCode).push(b);
   });
 
-  const sorted = [...taishanStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  const sorted = [...taishanStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   availableMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     const tag = tagByCode.get(r.itemCode) || '';
@@ -624,7 +624,7 @@ function renderItemReferenceTable() {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
   referenceCount.textContent = currentItemReference.length
     ? (keyword ? `共 ${currentItemReference.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentItemReference.length} 筆`)
@@ -699,7 +699,7 @@ function renderSummaryTable() {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
   summaryCount.textContent = currentSummary.length
     ? (keyword ? `共 ${currentSummary.length} 個品項，篩選後 ${items.length} 筆` : `共 ${currentSummary.length} 個品項`)
@@ -741,7 +741,7 @@ function renderBatchTable() {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }) || (a.batchNo || '').localeCompare(b.batchNo || ''));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '') || (a.batchNo || '').localeCompare(b.batchNo || ''));
 
   batchCount.textContent = currentBatchList.length
     ? (keyword ? `共 ${currentBatchList.length} 筆，篩選後 ${items.length} 筆` : `共 ${currentBatchList.length} 筆`)
@@ -930,7 +930,7 @@ consignLedgerTableBody.addEventListener('click', async e => {
 
 function renderLockedStockTable() {
   const keyword = lockedStockSearchInput.value.trim().toLowerCase();
-  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   if (keyword) {
     items = items.filter(r =>
       (r.itemCode || '').toLowerCase().includes(keyword) ||

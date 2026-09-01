@@ -48,7 +48,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
       (it.itemName || '').toLowerCase().includes(keyword)
     );
   }
-  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
   summaryEl.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 個品項，篩選後 ${items.length} 筆` : `共 ${totalCount} 個品項`)
@@ -139,7 +139,7 @@ consignmentSearchInput.addEventListener('input', renderConsignmentTable);
 
 function renderLockedStockTable() {
   const keyword = lockedStockSearchInput.value.trim().toLowerCase();
-  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   if (keyword) {
     items = items.filter(r =>
       (r.itemCode || '').toLowerCase().includes(keyword) ||

@@ -34,7 +34,7 @@ function renderFactoryMaterialTable() {
     return;
   }
   const batchesByCode = buildBatchesByCode(currentBatchList, '廠務');
-  const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  const sorted = [...withStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   factoryMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     const displayQty = formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0));
@@ -60,7 +60,7 @@ function renderAvailableMaterialTable() {
     return;
   }
   const batchesByCode = buildBatchesByCode(currentBatchList, '泰山');
-  const sorted = [...taishanStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  const sorted = [...taishanStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   availableMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     return `
@@ -77,7 +77,7 @@ function renderAvailableMaterialTable() {
 
 function renderLockedStockTable() {
   const keyword = lockedStockSearchInput.value.trim().toLowerCase();
-  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || '', undefined, { numeric: true }));
+  let items = [...currentLockedStock].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
   if (keyword) {
     items = items.filter(r =>
       (r.itemCode || '').toLowerCase().includes(keyword) ||
