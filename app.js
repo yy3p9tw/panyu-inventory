@@ -1207,13 +1207,14 @@ function parseBatchListSheet(sheet) {
 // 庫別欄位正規化得到「泰山」或「台中」就是調整實體倉庫庫存；正規化不到（值是客戶名字，例如
 // 「陳俊男-Y」「瓦城T」）就代表這筆其實是在動客戶的寄庫帳——用同一個 warehouse 欄位存客戶名字，
 // 畫面上寄庫那邊會照這個客戶名字對出來加減寄庫數量（跟泰山/台中庫存共用同一套「未核完調整」機制）。
+// 這三份都跟庫存.xlsx一樣有散裝/包裝兩種數量欄位，庫存本身是用包裝數量記的，統一都要優先讀包裝數量。
 function parseMovementAdjustments(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
-  const idxIn = findColumnIndex(header, ['入庫異動數量']);
-  const idxOut = findColumnIndex(header, ['出庫異動數量']);
+  const idxIn = findColumnIndex(header, ['入庫包裝數量', '入庫異動數量']);
+  const idxOut = findColumnIndex(header, ['出庫包裝數量', '出庫異動數量']);
   const idxWh = findColumnIndex(header, ['庫別']);
   if (idxCode === -1 || idxWh === -1) {
     throw new Error('找不到「品號」或「庫別」欄位，格式可能跟預期不同');
@@ -1241,11 +1242,11 @@ function parseTransferAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
-  const idxQty = findColumnIndex(header, ['轉撥數量']);
+  const idxQty = findColumnIndex(header, ['包裝數量', '轉撥數量']);
   const idxOutWh = findColumnIndex(header, ['轉出庫別']);
   const idxInWh = findColumnIndex(header, ['轉入庫別']);
   if (idxCode === -1 || idxQty === -1 || idxOutWh === -1 || idxInWh === -1) {
-    throw new Error('找不到「品號」「轉撥數量」「轉出庫別」或「轉入庫別」欄位，格式可能跟預期不同');
+    throw new Error('找不到「品號」「包裝數量/轉撥數量」「轉出庫別」或「轉入庫別」欄位，格式可能跟預期不同');
   }
 
   const records = [];
