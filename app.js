@@ -1294,6 +1294,35 @@ function parseSalesAdjustments(sheet) {
   return records;
 }
 
+// 進貨.xlsx：品號/品名欄位標題實際是「品    號」「品    名」（字中間有全形空白）
+// 一樣優先讀包裝數量（進貨包裝數量），不要讀散裝的進貨數量。庫別除了泰山/台中，理論上也可能是廠務，
+// 跟轉撥.xlsx一樣保留「原始文字剛好是廠務就當廠務本身」的備援，不要整筆丟掉。
+function parsePurchaseAdjustments(sheet) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  if (!rows.length) return [];
+  const header = rows[0];
+  const idxCode = findColumnIndex(header, ['品    號', '品號']);
+  const idxQty = findColumnIndex(header, ['進貨包裝數量', '進貨數量']);
+  const idxWh = findColumnIndex(header, ['庫別']);
+  if (idxCode === -1 || idxQty === -1 || idxWh === -1) {
+    throw new Error('找不到「品號」「進貨包裝數量/進貨數量」或「庫別」欄位，格式可能跟預期不同');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const code = (row[idxCode] || '').toString().trim();
+    if (!isRealItemCode(code)) continue;
+    const whRaw = (row[idxWh] || '').toString().trim();
+    const warehouse = normalizeWarehouse(whRaw) || (whRaw === '廠務' ? '廠務' : null);
+    if (!warehouse) continue;
+    const qty = Number(row[idxQty]) || 0;
+    if (!qty) continue;
+    records.push({ itemCode: code, warehouse, deltaQty: qty, source: '進貨' });
+  }
+  return records;
+}
+
 // 組合.xlsx：一列代表一筆「用元件組成成品」的組合單，成品欄位跟元件欄位左右並排在同一列——
 // 「包裝數量」「批號」「單位」這幾個欄名成品/元件各出現一次，用「元件品號」欄位的位置切左右半邊來分辨。
 // 跟其他未核完調整一樣：核完的單據那一列會從匯出檔清空，還留著品號就代表還沒核完。
@@ -1481,7 +1510,7 @@ function parseConsignmentLedgerFromMaster(wb) {
   return { records, skipped };
 }
 
-// 目前有 7 種確認過真實 ERP 匯出格式（進貨已經有真實檔案但還沒接；退貨/鎖庫還沒有真實檔案樣本，
+// 目前有 8 種確認過真實 ERP 匯出格式（退貨/鎖庫還沒有真實檔案樣本，
 // 拿到之後再依樣加進這個清單）。matchesFilename 拿掉副檔名後直接比對檔名字串。
 // 同一個檔名可能對到不只一個項目，所以是列出所有符合的候選，不是只挑第一個。
 const IMPORT_ITEMS = [
@@ -1586,6 +1615,17 @@ const IMPORT_ITEMS = [
       const result = await replacePendingAdjustments(records, ['組合']);
       return `已更新組合的未核完調整 ${result.written} 筆`;
     }
+  },
+  {
+    key: 'purchase',
+    label: '進貨（未核完調整）',
+    matchesFilename: name => name === '進貨',
+    prepare: wb => parsePurchaseAdjustments(firstSheet(wb)),
+    describe: records => `共 ${records.length} 筆未核完調整，會加減到泰山/台中庫存數字上${records.length === 0 ? '（就算是0筆也要按下面「確認匯入」，才會清掉昨天留下的舊資料）' : ''}`,
+    run: async records => {
+      const result = await replacePendingAdjustments(records, ['進貨']);
+      return `已更新進貨的未核完調整 ${result.written} 筆`;
+    }
   }
 ];
 
@@ -1604,7 +1644,7 @@ async function handleFileSelected(file) {
 
   if (!matched.length) {
     importMsg.style.color = 'var(--color-danger)';
-    importMsg.textContent = `看不懂檔名「${file.name}」，目前支援的檔名：庫存、寄庫、批號、異動、轉撥、銷貨、組合，或含「庫存YU」的整份組合檔（副檔名 .xlsx）`;
+    importMsg.textContent = `看不懂檔名「${file.name}」，目前支援的檔名：庫存、寄庫、批號、異動、轉撥、銷貨、組合、進貨，或含「庫存YU」的整份組合檔（副檔名 .xlsx）`;
     return;
   }
 
