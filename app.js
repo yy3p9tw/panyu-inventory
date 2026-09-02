@@ -16,9 +16,9 @@ import {
   subscribeToConsignmentLedger, addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
-  saveDailySnapshot, loadDailySnapshot,
+  saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData
-} from './inventory-service.js?v=34';
+} from './inventory-service.js?v=35';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -1757,6 +1757,14 @@ function todayDateString() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// 快照只留一年，超過的自動清掉——沒有後端排程，藉著使用者按「今天完成」的時機順便清理
+function dateStringMinusOneYear(dateStr) {
+  const d = new Date(dateStr);
+  d.setFullYear(d.getFullYear() - 1);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 saveSnapshotBtn.addEventListener('click', async () => {
   const date = todayDateString();
   if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
@@ -1771,7 +1779,9 @@ saveSnapshotBtn.addEventListener('click', async () => {
       pendingAdjustments: currentPendingAdjustments,
       lockedStock: currentLockedStock
     });
-    saveSnapshotMsg.textContent = `已存檔 ${date} 的快照，可以到「歷史」分頁查詢。`;
+    const cleanup = await deleteOldSnapshots(dateStringMinusOneYear(date));
+    saveSnapshotMsg.textContent = `已存檔 ${date} 的快照，可以到「歷史」分頁查詢。`
+      + (cleanup.deleted ? `（順便清掉了 ${cleanup.deleted} 筆超過一年的舊快照）` : '');
   } catch (err) {
     saveSnapshotMsg.textContent = '存檔失敗：' + err.message;
   } finally {

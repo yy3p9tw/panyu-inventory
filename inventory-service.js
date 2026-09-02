@@ -11,7 +11,9 @@ import {
   addDoc,
   deleteDoc,
   writeBatch,
-  getDocs
+  getDocs,
+  query,
+  where
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const stockCol = collection(db, 'stock');
@@ -387,4 +389,19 @@ export async function loadDailySnapshot(date) {
     result[type] = snap.exists() ? (snap.data().records || []) : null;
   }
   return result;
+}
+
+// 這個專案沒有後端排程，沒辦法真的「每天自動」跑清理——跟著使用者實際會做的「今天完成」動作
+// 順便清掉超過保留期限的舊快照，是最務實的觸發時機。cutoffDate 是 'YYYY-MM-DD'，
+// 早於這個日期的快照全部刪掉。Firestore 單一批次最多500筆，超過就分批刪。
+export async function deleteOldSnapshots(cutoffDate) {
+  const q = query(collection(db, 'dailySnapshots'), where('date', '<', cutoffDate));
+  const snap = await getDocs(q);
+  const refs = snap.docs.map(d => d.ref);
+  for (let i = 0; i < refs.length; i += 500) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 500).forEach(ref => batch.delete(ref));
+    await batch.commit();
+  }
+  return { deleted: refs.length };
 }
