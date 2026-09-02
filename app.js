@@ -18,7 +18,7 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot,
   clearDailyErpData
-} from './inventory-service.js?v=33';
+} from './inventory-service.js?v=34';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -1759,7 +1759,7 @@ function todayDateString() {
 
 saveSnapshotBtn.addEventListener('click', async () => {
   const date = todayDateString();
-  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫/寄庫進出紀錄存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
+  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
   saveSnapshotBtn.disabled = true;
   saveSnapshotMsg.textContent = '存檔中...';
   try {
@@ -1769,8 +1769,7 @@ saveSnapshotBtn.addEventListener('click', async () => {
       consignment: currentConsignment,
       factoryMaterial: currentFactoryMaterial,
       pendingAdjustments: currentPendingAdjustments,
-      lockedStock: currentLockedStock,
-      consignmentLedger: currentConsignmentLedger
+      lockedStock: currentLockedStock
     });
     saveSnapshotMsg.textContent = `已存檔 ${date} 的快照，可以到「歷史」分頁查詢。`;
   } catch (err) {
@@ -1824,10 +1823,6 @@ const HISTORY_VIEWS = {
   lockedStock: { columns: [
     { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'warehouse', label: '倉庫' },
     { key: 'tag', label: '標籤' }, { key: 'lockedQty', label: '鎖庫數量' }, { key: 'remark', label: '備註' }
-  ] },
-  consignmentLedger: { columns: [
-    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'customer', label: '客戶' },
-    { key: 'warehouse', label: '倉庫' }, { key: 'date', label: '日期' }, { key: 'deltaQty', label: '數量' }, { key: 'remark', label: '備註' }
   ] }
 };
 

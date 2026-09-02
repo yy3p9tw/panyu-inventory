@@ -89,10 +89,6 @@ export const HISTORY_VIEWS = {
   consignment: { columns: [
     { key: 'customer', label: '客戶' }, { key: 'itemName', label: '品名' }, { key: 'qty', label: '寄庫數量' }
   ] },
-  consignmentLedger: { columns: [
-    { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'customer', label: '客戶' },
-    { key: 'warehouse', label: '倉庫' }, { key: 'date', label: '日期' }, { key: 'deltaQty', label: '數量' }
-  ] },
   factoryMaterial: { columns: [
     { key: 'itemCode', label: '品號' }, { key: 'itemName', label: '品名' }, { key: 'qty', label: '數量' }
   ] },

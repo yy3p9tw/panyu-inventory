@@ -359,13 +359,16 @@ export async function deleteLockedStock(id) {
 // 使用者要留存「當天最終結果」的歷史記錄，用「今天完成」按鈕手動存檔（不是每次匯入自動存，
 // 因為當天可能匯入好幾次還沒定案）。一個日期一種資料類型各自一份文件，避免單一文件塞太多資料。
 
-const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock', 'consignmentLedger'];
+// 寄庫進出紀錄(consignmentLedger)不放進快照——它本身就是一筆一筆帶日期、永久累積的紀錄，
+// 從來不會被整批覆蓋，不需要另外每天複製一份，不然天數×筆數會越滾越大，白白佔空間。
+// 要查某天的寄庫進出，直接查 consignmentLedger 本身（照日期篩選）就有，不需要透過這裡的快照。
+const SNAPSHOT_TYPES = ['stock', 'batchList', 'consignment', 'factoryMaterial', 'pendingAdjustments', 'lockedStock'];
 
 function snapshotDocId(date, type) {
   return `${date}__${type}`;
 }
 
-// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments, lockedStock, consignmentLedger }（畫面上目前訂閱到的即時資料）
+// date: 'YYYY-MM-DD'；data: { stock, batchList, consignment, factoryMaterial, pendingAdjustments, lockedStock }（畫面上目前訂閱到的即時資料）
 export async function saveDailySnapshot(date, data) {
   const batch = writeBatch(db);
   SNAPSHOT_TYPES.forEach(type => {
