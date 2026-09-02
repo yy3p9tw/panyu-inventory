@@ -1213,12 +1213,22 @@ function parseMovementAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
-  const idxIn = findColumnIndex(header, ['入庫包裝數量', '入庫異動數量']);
-  const idxOut = findColumnIndex(header, ['出庫包裝數量', '出庫異動數量']);
+  const idxInPackaged = findColumnIndex(header, ['入庫包裝數量']);
+  const idxInRaw = findColumnIndex(header, ['入庫異動數量']);
+  const idxOutPackaged = findColumnIndex(header, ['出庫包裝數量']);
+  const idxOutRaw = findColumnIndex(header, ['出庫異動數量']);
   const idxWh = findColumnIndex(header, ['庫別']);
   if (idxCode === -1 || idxWh === -1) {
     throw new Error('找不到「品號」或「庫別」欄位，格式可能跟預期不同');
   }
+
+  // 優先用包裝數量，但有些不滿一個包裝單位的零頭調整（例如0.45KG）包裝數量會四捨五入成0，
+  // 這種時候改用散裝的異動數量，不要整筆憑空消失
+  const pickQty = (row, idxPackaged, idxRaw) => {
+    const packaged = idxPackaged !== -1 ? Number(row[idxPackaged]) || 0 : 0;
+    if (packaged) return packaged;
+    return idxRaw !== -1 ? Number(row[idxRaw]) || 0 : 0;
+  };
 
   const records = [];
   for (let i = 1; i < rows.length; i++) {
@@ -1228,8 +1238,8 @@ function parseMovementAdjustments(sheet) {
     const whRaw = (row[idxWh] || '').toString().trim();
     if (!whRaw) continue;
     const warehouse = normalizeWarehouse(whRaw) || whRaw; // 對不到泰山/台中就當客戶名字（寄庫用）
-    const inQty = idxIn !== -1 ? Number(row[idxIn]) || 0 : 0;
-    const outQty = idxOut !== -1 ? Number(row[idxOut]) || 0 : 0;
+    const inQty = pickQty(row, idxInPackaged, idxInRaw);
+    const outQty = pickQty(row, idxOutPackaged, idxOutRaw);
     if (inQty) records.push({ itemCode: code, warehouse, deltaQty: inQty, source: '異動' });
     if (outQty) records.push({ itemCode: code, warehouse, deltaQty: -outQty, source: '異動' });
   }
@@ -1242,10 +1252,11 @@ function parseTransferAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
-  const idxQty = findColumnIndex(header, ['包裝數量', '轉撥數量']);
+  const idxQtyPackaged = findColumnIndex(header, ['包裝數量']);
+  const idxQtyRaw = findColumnIndex(header, ['轉撥數量']);
   const idxOutWh = findColumnIndex(header, ['轉出庫別']);
   const idxInWh = findColumnIndex(header, ['轉入庫別']);
-  if (idxCode === -1 || idxQty === -1 || idxOutWh === -1 || idxInWh === -1) {
+  if (idxCode === -1 || (idxQtyPackaged === -1 && idxQtyRaw === -1) || idxOutWh === -1 || idxInWh === -1) {
     throw new Error('找不到「品號」「包裝數量/轉撥數量」「轉出庫別」或「轉入庫別」欄位，格式可能跟預期不同');
   }
 
@@ -1254,7 +1265,9 @@ function parseTransferAdjustments(sheet) {
     const row = rows[i];
     const code = (row[idxCode] || '').toString().trim();
     if (!isRealItemCode(code)) continue;
-    const qty = Number(row[idxQty]) || 0;
+    // 優先用包裝數量，不滿一個包裝單位四捨五入成0的零頭調整改用散裝的轉撥數量，不要整筆消失
+    const packagedQty = idxQtyPackaged !== -1 ? Number(row[idxQtyPackaged]) || 0 : 0;
+    const qty = packagedQty || (idxQtyRaw !== -1 ? Number(row[idxQtyRaw]) || 0 : 0);
     if (!qty) continue;
     // 轉出/轉入庫別除了泰山/台中，也可能是「廠務」（例如廠務轉泰山、泰山轉廠務）——
     // 正規化不到泰山/台中時，只要原始文字剛好是「廠務」就當廠務本身處理，不要整筆丟掉
@@ -1274,9 +1287,10 @@ function parseSalesAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品    號', '品號']);
-  const idxQty = findColumnIndex(header, ['包裝數量', '銷貨數量']);
+  const idxQtyPackaged = findColumnIndex(header, ['包裝數量']);
+  const idxQtyRaw = findColumnIndex(header, ['銷貨數量']);
   const idxWh = findColumnIndex(header, ['庫別名稱']);
-  if (idxCode === -1 || idxQty === -1 || idxWh === -1) {
+  if (idxCode === -1 || (idxQtyPackaged === -1 && idxQtyRaw === -1) || idxWh === -1) {
     throw new Error('找不到「品號」「包裝數量/銷貨數量」或「庫別名稱」欄位，格式可能跟預期不同');
   }
 
@@ -1287,7 +1301,9 @@ function parseSalesAdjustments(sheet) {
     if (!isRealItemCode(code)) continue;
     const warehouse = normalizeWarehouse(row[idxWh]);
     if (!warehouse) continue;
-    const qty = Number(row[idxQty]) || 0;
+    // 優先用包裝數量，不滿一個包裝單位四捨五入成0的零頭銷貨改用散裝的銷貨數量，不要整筆消失
+    const packagedQty = idxQtyPackaged !== -1 ? Number(row[idxQtyPackaged]) || 0 : 0;
+    const qty = packagedQty || (idxQtyRaw !== -1 ? Number(row[idxQtyRaw]) || 0 : 0);
     if (!qty) continue;
     records.push({ itemCode: code, warehouse, deltaQty: -qty, source: '銷貨' });
   }
@@ -1302,9 +1318,10 @@ function parsePurchaseAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品    號', '品號']);
-  const idxQty = findColumnIndex(header, ['進貨包裝數量', '進貨數量']);
+  const idxQtyPackaged = findColumnIndex(header, ['進貨包裝數量']);
+  const idxQtyRaw = findColumnIndex(header, ['進貨數量']);
   const idxWh = findColumnIndex(header, ['庫別']);
-  if (idxCode === -1 || idxQty === -1 || idxWh === -1) {
+  if (idxCode === -1 || (idxQtyPackaged === -1 && idxQtyRaw === -1) || idxWh === -1) {
     throw new Error('找不到「品號」「進貨包裝數量/進貨數量」或「庫別」欄位，格式可能跟預期不同');
   }
 
@@ -1316,7 +1333,9 @@ function parsePurchaseAdjustments(sheet) {
     const whRaw = (row[idxWh] || '').toString().trim();
     const warehouse = normalizeWarehouse(whRaw) || (whRaw === '廠務' ? '廠務' : null);
     if (!warehouse) continue;
-    const qty = Number(row[idxQty]) || 0;
+    // 優先用包裝數量，不滿一個包裝單位四捨五入成0的零頭進貨改用散裝的進貨數量，不要整筆消失
+    const packagedQty = idxQtyPackaged !== -1 ? Number(row[idxQtyPackaged]) || 0 : 0;
+    const qty = packagedQty || (idxQtyRaw !== -1 ? Number(row[idxQtyRaw]) || 0 : 0);
     if (!qty) continue;
     records.push({ itemCode: code, warehouse, deltaQty: qty, source: '進貨' });
   }
