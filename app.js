@@ -293,15 +293,22 @@ function applyRoleVisibility() {
       currentFactoryMaterial = rows;
       renderFactoryMaterialTable();
     });
+  } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
+    unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
+    currentFactoryMaterial = [];
+  }
+
+  // 純泰山倉管（沒有廠務身分）也需要參照資料，才能套用「註記=隱/隱藏」的品項隱藏規則
+  const needsItemReference = canSeeFactory || currentRoles.includes('泰山倉管');
+  if (needsItemReference && !unsubscribeItemReference) {
     unsubscribeItemReference = subscribeToItemReference(rows => {
       currentItemReference = rows;
       renderAvailableMaterialTable();
       renderItemReferenceTable();
+      renderTaishanTable();
     });
-  } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
-    unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
+  } else if (!needsItemReference && unsubscribeItemReference) {
     unsubscribeItemReference(); unsubscribeItemReference = null;
-    currentFactoryMaterial = [];
     currentItemReference = [];
   }
 
@@ -428,8 +435,13 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   if (!visibleWarehouses.includes(warehouse)) return;
   const keyword = searchInputEl.value.trim().toLowerCase();
 
-  // 純泰山倉管（沒有管理員身分）看不到「註記=隱藏」的品項，這是參照表帶過來的規則
+  // 純泰山倉管（沒有管理員身分）看不到「註記=隱」或「隱藏」的品項，即時對照參照表的註記欄位
+  // （原本存在庫存文件上的 hiddenFromTaishanManager 欄位，改成真實ERP格式匯入後從來沒被寫入過，
+  // 一直是false形同虛設——參照本身才是這個欄位唯一的資料來源，不該再靠匯入時順便存一份）
   const applyTaishanHideRule = warehouse === '泰山' && currentRoles.includes('泰山倉管') && !isAdmin;
+  const hiddenItemCodes = new Set(
+    currentItemReference.filter(r => r.note === '隱' || r.note === '隱藏').map(r => r.itemCode)
+  );
 
   // 品號 -> 未核完調整加總，套用到顯示的庫存數字上
   const adjustmentByCode = new Map();
@@ -459,7 +471,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   // 庫存(含未核完調整)是0的品項不用顯示，列表太多沒意義的0很雜
   let items = currentStock.filter(s => {
     if (s.warehouse !== warehouse) return false;
-    if (applyTaishanHideRule && s.hiddenFromTaishanManager) return false;
+    if (applyTaishanHideRule && hiddenItemCodes.has(s.itemCode)) return false;
     if (formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) === 0) return false;
     return true;
   });
@@ -473,7 +485,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
 
   const totalCount = currentStock.filter(s =>
     s.warehouse === warehouse &&
-    !(applyTaishanHideRule && s.hiddenFromTaishanManager) &&
+    !(applyTaishanHideRule && hiddenItemCodes.has(s.itemCode)) &&
     formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0
   ).length;
   summaryEl.style.color = '';
