@@ -26,8 +26,16 @@ let currentConsignment = [];
 let currentConsignmentLedger = [];
 let currentLockedStock = [];
 let currentPendingAdjustments = [];
+let currentItemReference = [];
 
 // ---------- 泰山 / 台中 ----------
+
+// 參照的「註記」欄位是「隱」或「隱藏」的品項，前台不顯示（後台管理系統還是看得到）
+function hiddenItemCodeSet() {
+  return new Set(
+    currentItemReference.filter(r => r.note === '隱' || r.note === '隱藏').map(r => r.itemCode)
+  );
+}
 
 function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   const keyword = searchInputEl.value.trim().toLowerCase();
@@ -39,8 +47,9 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   });
   const batchesByCode = buildBatchesByCode(currentBatchList, warehouse);
   const lockByCode = buildLockByCode(currentLockedStock, warehouse);
+  const hiddenCodes = hiddenItemCodeSet();
 
-  let items = currentStock.filter(s => s.warehouse === warehouse && formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0);
+  let items = currentStock.filter(s => s.warehouse === warehouse && !hiddenCodes.has(s.itemCode) && formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0);
   const totalCount = items.length;
   if (keyword) {
     items = items.filter(it =>
@@ -223,4 +232,9 @@ subscribeCollection('pendingAdjustments', rows => {
   renderTaishanTable();
   renderTaichungTable();
   renderConsignmentTable();
+});
+subscribeCollection('itemReference', rows => {
+  currentItemReference = rows;
+  renderTaishanTable();
+  renderTaichungTable();
 });
