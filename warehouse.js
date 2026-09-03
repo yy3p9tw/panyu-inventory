@@ -119,12 +119,19 @@ function renderConsignmentTable() {
     return;
   }
 
+  // 鎖庫的「標籤」欄位有時候填的其實是客戶名字（代表這筆鎖庫其實是幫這個客戶鎖的寄庫貨），
+  // 寄庫列表這邊用品號+標籤對出來，標紅提示這筆同時也被鎖庫了
+  const lockedCustomerItemSet = new Set(
+    currentLockedStock.filter(l => l.tag).map(l => `${l.itemCode}__${l.tag}`)
+  );
+
   consignmentTableBody.innerHTML = items.map(r => {
     const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
     const displayQty = formatQty(r.qty + adjustment);
+    const isLocked = lockedCustomerItemSet.has(`${r.itemCode}__${r.customer}`);
     return `
     <tr>
-      <td>${escapeHTML(r.customer)}</td>
+      <td>${escapeHTML(r.customer)}${isLocked ? ' <span class="badge badge-consign-locked" title="這個客戶的這個品項同時也被鎖庫了">鎖庫</span>' : ''}</td>
       <td>${escapeHTML(r.itemName)}</td>
       <td class="qty-cell">${displayQty}</td>
       <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemCode, '泰山')}</td>

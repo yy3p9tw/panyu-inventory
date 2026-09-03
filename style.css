@@ -234,6 +234,11 @@ main {
   color: #991b1b;
 }
 
+.badge-consign-locked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .badge-split {
   background: #e0e7ff;
   color: #3730a3;
