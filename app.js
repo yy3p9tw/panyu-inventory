@@ -9,7 +9,7 @@ import {
 import {
   subscribeToStock, replaceStockForWarehouses,
   subscribeToFactoryMaterial, replaceFactoryMaterial,
-  subscribeToItemReference, setItemReferenceField, importItemReferenceFromMaster,
+  subscribeToItemReference, setItemReferenceField, importItemReferenceFromMaster, addItemReferenceStubs,
   subscribeToSummary, replaceSummary,
   subscribeToBatchList, replaceBatchList,
   subscribeToConsignment, replaceConsignment,
@@ -18,7 +18,7 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData
-} from './inventory-service.js?v=35';
+} from './inventory-service.js?v=36';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -1586,7 +1586,18 @@ const IMPORT_ITEMS = [
     run: async data => {
       const stockResult = await replaceStockForWarehouses([...data.taishan, ...data.taichung], WAREHOUSES);
       const factoryResult = await replaceFactoryMaterial(data.factory);
-      return `已更新泰山/台中庫存 ${stockResult.written} 筆、廠務用料 ${factoryResult.written} 筆`;
+      // 新品號（參照裡還沒有的）自動補一筆最基本的參照紀錄，讓使用者能在「參照」分頁看到並手動分類
+      const existingCodes = new Set(currentItemReference.map(r => r.itemCode));
+      const seen = new Set();
+      const newItems = [];
+      [...data.taishan, ...data.taichung, ...data.factory].forEach(r => {
+        if (existingCodes.has(r.itemCode) || seen.has(r.itemCode)) return;
+        seen.add(r.itemCode);
+        newItems.push({ itemCode: r.itemCode, itemName: r.itemName });
+      });
+      const stubResult = await addItemReferenceStubs(newItems);
+      return `已更新泰山/台中庫存 ${stockResult.written} 筆、廠務用料 ${factoryResult.written} 筆`
+        + (stubResult.written ? `，新增了 ${stubResult.written} 筆新品項到「參照」分頁（記得去填分類）` : '');
     }
   },
   {

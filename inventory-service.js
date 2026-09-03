@@ -182,6 +182,25 @@ export async function importItemReferenceFromMaster(records) {
   return { written: records.length };
 }
 
+// 每天匯入庫存.xlsx時，遇到參照裡還沒有的新品號（例如最近新進的品項）自動補一筆最基本的紀錄
+// （只有品號/品名），讓它會出現在「參照」分頁讓使用者手動填分類欄位——呼叫端只傳「參照裡真的
+// 還沒有」的品項，merge寫入不會動到任何已存在的欄位。
+export async function addItemReferenceStubs(items) {
+  if (!items.length) return { written: 0 };
+  const chunks = [];
+  const remaining = [...items];
+  while (remaining.length) chunks.push(remaining.splice(0, 450));
+  for (const chunk of chunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(({ itemCode, itemName }) => {
+      const ref = doc(db, 'itemReference', sanitizeIdPart(itemCode));
+      batch.set(ref, { itemCode, itemName: itemName || '', updatedAt: Date.now() }, { merge: true });
+    });
+    await batch.commit();
+  }
+  return { written: items.length };
+}
+
 // ---------- 批號：每次匯入完全覆蓋 ----------
 
 export function subscribeToBatchList(callback, onError) {
