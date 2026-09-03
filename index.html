@@ -171,7 +171,7 @@
       <section id="tabConsignment" class="tab-panel" style="display:none;">
         <div class="panel">
           <h2>寄庫</h2>
-          <p class="hint-text">寄庫數量是 ERP 給的客戶+品項總數。泰山/台中兩欄 ERP 沒有這個細分，是人工手動記錄的——點數字可以看明細、新增一筆進出紀錄（帶日期），系統自動加總。</p>
+          <p class="hint-text">寄庫數量：有進出紀錄的品項用進出紀錄加總顯示（比較即時），沒有紀錄的才用 ERP 寄庫.xlsx 原始數字。泰山/台中兩欄 ERP 沒有細分，是人工手動記錄的——點數字可以看明細、新增一筆進出紀錄（帶日期），系統自動加總。</p>
           <input type="text" id="consignmentSearchInput" placeholder="搜尋客戶或品名..." />
           <p class="hint-text" id="consignmentCount"></p>
           <div class="table-scroll">
@@ -356,6 +356,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=47"></script>
+  <script type="module" src="app.js?v=48"></script>
 </body>
 </html>

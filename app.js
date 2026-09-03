@@ -779,6 +779,15 @@ function consignmentLedgerSummary(customer, itemCode, warehouse) {
   return { total, latestDate };
 }
 
+// 客戶+品號（不分倉庫）的進出紀錄總和——使用者實際手動記的進出才是最準的，
+// 有紀錄就用這個當「寄庫數量」，比 ERP 寄庫.xlsx 的原始數字更即時（ERP要等下次匯出才會更新）。
+// 完全沒有進出紀錄的品項（例如還沒被收進歷史匯入的舊資料）才退回用 ERP 原始數字+未核完調整。
+function consignmentLedgerGrandTotal(customer, itemCode) {
+  const entries = currentConsignmentLedger.filter(l => l.customer === customer && l.itemCode === itemCode);
+  if (!entries.length) return null;
+  return entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
+}
+
 function renderConsignmentTable() {
   const keyword = consignmentSearchInput.value.trim().toLowerCase();
 
@@ -789,8 +798,16 @@ function renderConsignmentTable() {
     adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
   });
 
-  // 寄庫數量0的品項不用顯示（寄庫數量=泰山+台中，0代表這筆已經沒有寄庫中的貨了）
-  let items = currentConsignment.filter(r => formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0)) !== 0);
+  // 寄庫數量：有進出紀錄就用進出紀錄的總和（比較即時，使用者手動記的才是實際狀況），
+  // 完全沒有紀錄的品項才退回用 ERP 寄庫.xlsx 原始數字+未核完調整
+  const displayQtyFor = r => {
+    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemCode);
+    if (ledgerTotal !== null) return formatQty(ledgerTotal);
+    return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
+  };
+
+  // 寄庫數量0的品項不用顯示（0代表這筆已經沒有寄庫中的貨了）
+  let items = currentConsignment.filter(r => displayQtyFor(r) !== 0);
   if (keyword) {
     items = items.filter(it =>
       (it.customer || '').toLowerCase().includes(keyword) ||
@@ -799,7 +816,7 @@ function renderConsignmentTable() {
   }
   items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
-  const totalCount = currentConsignment.filter(r => formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0)) !== 0).length;
+  const totalCount = currentConsignment.filter(r => displayQtyFor(r) !== 0).length;
   consignmentCount.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
     : '目前沒有寄庫資料，請先到「匯入資料」上傳 ERP 檔案';
@@ -821,10 +838,8 @@ function renderConsignmentTable() {
     currentLockedStock.filter(l => l.tag).map(l => `${l.itemCode}__${l.tag}`)
   );
 
-  // 未核完調整照樣算進 displayQty，只是不顯示標籤了（跟泰山/台中同樣的理由，見 renderQtyCell）
   consignmentTableBody.innerHTML = items.map(r => {
-    const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
-    const displayQty = formatQty(r.qty + adjustment);
+    const displayQty = displayQtyFor(r);
     const isLocked = lockedCustomerItemSet.has(`${r.itemCode}__${r.customer}`);
     return `
     <tr>

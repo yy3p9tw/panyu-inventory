@@ -91,6 +91,13 @@ function consignmentLedgerTotal(customer, itemCode, warehouse) {
   return formatQty(entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0));
 }
 
+// 客戶+品號（不分倉庫）的進出紀錄總和，有紀錄就用這個當「寄庫數量」，比ERP原始數字更即時
+function consignmentLedgerGrandTotal(customer, itemCode) {
+  const entries = currentConsignmentLedger.filter(l => l.customer === customer && l.itemCode === itemCode);
+  if (!entries.length) return null;
+  return entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
+}
+
 function renderConsignmentTable() {
   const keyword = consignmentSearchInput.value.trim().toLowerCase();
 
@@ -100,7 +107,13 @@ function renderConsignmentTable() {
     adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
   });
 
-  let items = currentConsignment.filter(r => formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0)) !== 0);
+  const displayQtyFor = r => {
+    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemCode);
+    if (ledgerTotal !== null) return formatQty(ledgerTotal);
+    return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
+  };
+
+  let items = currentConsignment.filter(r => displayQtyFor(r) !== 0);
   const totalCount = items.length;
   if (keyword) {
     items = items.filter(it =>
@@ -126,8 +139,7 @@ function renderConsignmentTable() {
   );
 
   consignmentTableBody.innerHTML = items.map(r => {
-    const adjustment = adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0;
-    const displayQty = formatQty(r.qty + adjustment);
+    const displayQty = displayQtyFor(r);
     const isLocked = lockedCustomerItemSet.has(`${r.itemCode}__${r.customer}`);
     return `
     <tr>
