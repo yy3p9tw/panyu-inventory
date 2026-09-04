@@ -98,6 +98,9 @@ export const HISTORY_VIEWS = {
   ] }
 };
 
+// 這幾種類型的即時分頁本來就不顯示數量0的品項，歷史查詢也要一致，不然會看到一堆沒意義的0
+const HISTORY_ZERO_QTY_FILTERED_TYPES = new Set(['stock', 'consignment', 'factoryMaterial']);
+
 // 共用的歷史查詢按鈕邏輯，dom = { dateInput, typeSelect, loadBtn, count, tableHead, tableBody }
 export function wireHistoryQuery(dom) {
   dom.loadBtn.addEventListener('click', async () => {
@@ -109,7 +112,7 @@ export function wireHistoryQuery(dom) {
     dom.tableHead.innerHTML = '';
     dom.tableBody.innerHTML = '';
     try {
-      const records = await loadDailySnapshotType(date, type);
+      let records = await loadDailySnapshotType(date, type);
       const view = HISTORY_VIEWS[type];
       dom.tableHead.innerHTML = `<tr>${view.columns.map(c => `<th>${c.label}</th>`).join('')}</tr>`;
       if (records === null) {
@@ -117,6 +120,7 @@ export function wireHistoryQuery(dom) {
         dom.tableBody.innerHTML = `<tr><td colspan="${view.columns.length}" style="text-align:center; color:#6b7280;">查無資料</td></tr>`;
         return;
       }
+      if (HISTORY_ZERO_QTY_FILTERED_TYPES.has(type)) records = records.filter(r => Number(r.qty) !== 0);
       dom.count.textContent = `${date} 共 ${records.length} 筆`;
       if (!records.length) {
         dom.tableBody.innerHTML = `<tr><td colspan="${view.columns.length}" style="text-align:center; color:#6b7280;">這份快照是空的</td></tr>`;

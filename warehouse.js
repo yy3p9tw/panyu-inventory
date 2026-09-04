@@ -2,7 +2,7 @@
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
   escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
-} from './front-common.js?v=36';
+} from './front-common.js?v=37';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
