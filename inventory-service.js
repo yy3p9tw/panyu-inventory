@@ -227,12 +227,18 @@ export async function replaceBatchList(records) {
 // 可以先一鍵清空，不用等匯入才刪掉舊資料。可用原料(泰山)不用另外清，它是從泰山庫存即時算出來的，
 // 泰山清空它自然就跟著空了。
 export async function clearDailyErpData() {
-  const [stock, factoryMaterial, batchList] = await Promise.all([
+  const [stock, factoryMaterial, batchList, pendingAdjustments] = await Promise.all([
     replaceWholeCollection('stock', []),
     replaceWholeCollection('factoryMaterial', []),
-    replaceWholeCollection('batchList', [])
+    replaceWholeCollection('batchList', []),
+    replaceWholeCollection('pendingAdjustments', [])
   ]);
-  return { stock: stock.deleted, factoryMaterial: factoryMaterial.deleted, batchList: batchList.deleted };
+  return {
+    stock: stock.deleted,
+    factoryMaterial: factoryMaterial.deleted,
+    batchList: batchList.deleted,
+    pendingAdjustments: pendingAdjustments.deleted
+  };
 }
 
 // ---------- 寄庫：每次匯入完全覆蓋 ----------
