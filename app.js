@@ -818,8 +818,21 @@ function renderConsignmentTable() {
     return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
   };
 
+  // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
+  // 這種也要能顯示，不能只靠 currentConsignment 有沒有這筆資料，所以把兩邊的客戶+品號做聯集
+  const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemCode}__${r.customer}`));
+  const ledgerOnlyRows = [];
+  const seenLedgerOnly = new Set();
+  currentConsignmentLedger.forEach(l => {
+    const key = `${l.itemCode}__${l.customer}`;
+    if (consignmentKeys.has(key) || seenLedgerOnly.has(key)) return;
+    seenLedgerOnly.add(key);
+    ledgerOnlyRows.push({ itemCode: l.itemCode, itemName: l.itemName, customer: l.customer, qty: 0 });
+  });
+  const allRows = [...currentConsignment, ...ledgerOnlyRows];
+
   // 寄庫數量0的品項不用顯示（0代表這筆已經沒有寄庫中的貨了）
-  let items = currentConsignment.filter(r => displayQtyFor(r) !== 0);
+  let items = allRows.filter(r => displayQtyFor(r) !== 0);
   if (keyword) {
     items = items.filter(it =>
       (it.customer || '').toLowerCase().includes(keyword) ||
@@ -828,7 +841,7 @@ function renderConsignmentTable() {
   }
   items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
-  const totalCount = currentConsignment.filter(r => displayQtyFor(r) !== 0).length;
+  const totalCount = allRows.filter(r => displayQtyFor(r) !== 0).length;
   consignmentCount.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
     : '目前沒有寄庫資料，請先到「匯入資料」上傳 ERP 檔案';
