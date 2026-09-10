@@ -1532,9 +1532,14 @@ function parseConsignmentLedgerFromMaster(wb) {
   const dateColumns = parseConsignmentDateColumns(header, dateStartIdx, dateEndIdx);
   const firstEntryDate = dateColumns.length ? dateColumns[0].date : todayDateString();
 
-  // 客戶+品名 -> 品號，從目前的寄庫總數（ERP匯入的 consignment）反查
+  // 客戶+品名 -> 品號，優先從目前的寄庫總數（ERP匯入的 consignment）反查——
+  // 如果是全新客戶，ERP自己的寄庫.xlsx還沒出現過這個客戶，查不到就退回用品名對庫存/參照裡的品號
+  // （品名本身就是唯一的品項識別，不靠客戶也查得到）
   const codeByCustomerName = new Map();
   currentConsignment.forEach(c => codeByCustomerName.set(`${c.customer}__${c.itemName}`, c.itemCode));
+  const codeByItemName = new Map();
+  currentStock.forEach(s => { if (s.itemName && !codeByItemName.has(s.itemName)) codeByItemName.set(s.itemName, s.itemCode); });
+  currentItemReference.forEach(r => { if (r.itemName && !codeByItemName.has(r.itemName)) codeByItemName.set(r.itemName, r.itemCode); });
 
   const records = [];
   let skipped = 0;
@@ -1547,7 +1552,7 @@ function parseConsignmentLedgerFromMaster(wb) {
     const warehouse = normalizeWarehouse(whRaw);
     if (!warehouse) continue; // 庫別不是泰山/台中的略過
 
-    const itemCode = codeByCustomerName.get(`${customer}__${itemName}`);
+    const itemCode = codeByCustomerName.get(`${customer}__${itemName}`) || codeByItemName.get(itemName);
     if (!itemCode) { skipped++; continue; }
 
     const lastMonthQty = idxLastMonth !== -1 ? Number(row[idxLastMonth]) || 0 : 0;
