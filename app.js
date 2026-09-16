@@ -344,13 +344,6 @@ function applyRoleVisibility() {
       currentConsignment = rows;
       renderConsignmentTable();
     });
-    unsubscribePendingAdjustments = subscribeToPendingAdjustments(rows => {
-      currentPendingAdjustments = rows;
-      renderTaishanTable();
-      renderTaichungTable();
-      renderConsignmentTable();
-      renderFactoryMaterialTable();
-    });
     unsubscribeLockedStock = subscribeToLockedStock(rows => {
       currentLockedStock = rows;
       renderLockedStockTable();
@@ -364,13 +357,27 @@ function applyRoleVisibility() {
     });
   } else if (!canSeeStock && unsubscribeConsignment) {
     unsubscribeConsignment(); unsubscribeConsignment = null;
-    unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
     unsubscribeLockedStock(); unsubscribeLockedStock = null;
     unsubscribeConsignmentLedger(); unsubscribeConsignmentLedger = null;
     currentConsignment = [];
-    currentPendingAdjustments = [];
     currentLockedStock = [];
     currentConsignmentLedger = [];
+  }
+
+  // 未核完調整廠務物料分頁也要用（可用原料(泰山)的顯示數字要加減未核完調整），
+  // 純廠務角色（沒有泰山/台中/管理員）canSeeStock 會是 false，所以這裡要跟 canSeeFactory 一起判斷
+  if ((canSeeStock || canSeeFactory) && !unsubscribePendingAdjustments) {
+    unsubscribePendingAdjustments = subscribeToPendingAdjustments(rows => {
+      currentPendingAdjustments = rows;
+      renderTaishanTable();
+      renderTaichungTable();
+      renderConsignmentTable();
+      renderFactoryMaterialTable();
+      renderAvailableMaterialTable();
+    });
+  } else if (!canSeeStock && !canSeeFactory && unsubscribePendingAdjustments) {
+    unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
+    currentPendingAdjustments = [];
   }
 }
 
@@ -573,8 +580,19 @@ function renderAvailableMaterialTable() {
   const keyword = availableMaterialSearchInput.value.trim().toLowerCase();
   const tagByCode = new Map(currentItemReference.map(r => [r.itemCode, r.tag]));
 
-  // 庫存0的品項、沒有標記的品項都不用顯示
-  let taishanStock = currentStock.filter(s => s.warehouse === '泰山' && s.qty !== 0 && tagByCode.get(s.itemCode));
+  // 跟泰山分頁一樣，要把未核完調整加進顯示數字，不能只看庫存.xlsx的原始數字
+  const adjustmentByCode = new Map();
+  currentPendingAdjustments.forEach(a => {
+    if (a.warehouse !== '泰山') return;
+    adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
+  });
+
+  // 庫存(含未核完調整)是0的品項、沒有標記的品項都不用顯示
+  let taishanStock = currentStock.filter(s =>
+    s.warehouse === '泰山' &&
+    tagByCode.get(s.itemCode) &&
+    formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0
+  );
   if (keyword) taishanStock = taishanStock.filter(s => (s.itemName || '').toLowerCase().includes(keyword));
   if (!taishanStock.length) {
     availableMaterialTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
@@ -592,10 +610,11 @@ function renderAvailableMaterialTable() {
   availableMaterialTableBody.innerHTML = sorted.map(r => {
     const batches = (batchesByCode.get(r.itemCode) || []).filter(b => b.batchNo);
     const tag = tagByCode.get(r.itemCode) || '';
+    const displayQty = formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0));
     return `
     <tr>
       <td>${escapeHTML(r.itemName)}</td>
-      <td>${formatQty(r.qty)}</td>
+      <td>${displayQty}</td>
       <td>${renderBatchCell(batches)}</td>
       <td>${tag ? escapeHTML(tag) : '-'}</td>
     </tr>
