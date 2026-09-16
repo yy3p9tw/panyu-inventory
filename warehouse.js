@@ -49,7 +49,20 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   const lockByCode = buildLockByCode(currentLockedStock, warehouse);
   const hiddenCodes = hiddenItemCodeSet();
 
-  let items = currentStock.filter(s => s.warehouse === warehouse && !hiddenCodes.has(s.itemCode) && formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0);
+  // 有些品項只存在未核完調整裡（例如組合單新增的成品，庫存.xlsx還沒出現過這個品號），
+  // 把庫存跟未核完調整的品號做聯集才不會漏掉
+  const stockItemCodes = new Set(
+    currentStock.filter(s => s.warehouse === warehouse).map(s => s.itemCode)
+  );
+  const adjustmentOnlyRows = [];
+  adjustmentByCode.forEach((_, itemCode) => {
+    if (stockItemCodes.has(itemCode)) return;
+    const itemName = currentPendingAdjustments.find(a => a.warehouse === warehouse && a.itemCode === itemCode && a.itemName)?.itemName || '';
+    adjustmentOnlyRows.push({ itemCode, itemName, warehouse, qty: 0, expired: '', isSplit: false });
+  });
+  const allStockRows = [...currentStock.filter(s => s.warehouse === warehouse), ...adjustmentOnlyRows];
+
+  let items = allStockRows.filter(s => !hiddenCodes.has(s.itemCode) && formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0);
   const totalCount = items.length;
   if (keyword) {
     items = items.filter(it =>

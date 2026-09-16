@@ -27,7 +27,18 @@ function renderFactoryMaterialTable() {
     if (a.warehouse !== '廠務') return;
     adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
   });
-  let withStock = currentFactoryMaterial.filter(r => formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0)) !== 0);
+  // 有些品項只存在未核完調整裡（例如組合單新增的成品，庫存.xlsx還沒出現過這個品號），
+  // 把庫存跟未核完調整的品號做聯集才不會漏掉
+  const factoryItemCodes = new Set(currentFactoryMaterial.map(r => r.itemCode));
+  const adjustmentOnlyRows = [];
+  adjustmentByCode.forEach((_, itemCode) => {
+    if (factoryItemCodes.has(itemCode)) return;
+    const itemName = currentPendingAdjustments.find(a => a.warehouse === '廠務' && a.itemCode === itemCode && a.itemName)?.itemName || '';
+    adjustmentOnlyRows.push({ itemCode, itemName, qty: 0 });
+  });
+  const allFactoryRows = [...currentFactoryMaterial, ...adjustmentOnlyRows];
+
+  let withStock = allFactoryRows.filter(r => formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0)) !== 0);
   if (keyword) withStock = withStock.filter(r => (r.itemName || '').toLowerCase().includes(keyword));
   if (!withStock.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;

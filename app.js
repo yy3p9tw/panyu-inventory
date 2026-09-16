@@ -18,7 +18,7 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData
-} from './inventory-service.js?v=37';
+} from './inventory-service.js?v=38';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -475,9 +475,21 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
     info.entries.push({ tag: l.tag, lockedQty: l.lockedQty, remark: l.remark });
   });
 
+  // 有些品項只存在未核完調整裡（例如組合單新增的成品，庫存.xlsx還沒出現過這個品號）——
+  // 這種也要能顯示，不能只靠 currentStock 有沒有這筆資料，所以把兩邊的品號做聯集
+  const stockItemCodes = new Set(
+    currentStock.filter(s => s.warehouse === warehouse).map(s => s.itemCode)
+  );
+  const adjustmentOnlyRows = [];
+  adjustmentByCode.forEach((_, itemCode) => {
+    if (stockItemCodes.has(itemCode)) return;
+    const itemName = currentPendingAdjustments.find(a => a.warehouse === warehouse && a.itemCode === itemCode && a.itemName)?.itemName || '';
+    adjustmentOnlyRows.push({ itemCode, itemName, warehouse, qty: 0, expired: '', isSplit: false });
+  });
+  const allStockRows = [...currentStock.filter(s => s.warehouse === warehouse), ...adjustmentOnlyRows];
+
   // 庫存(含未核完調整)是0的品項不用顯示，列表太多沒意義的0很雜
-  let items = currentStock.filter(s => {
-    if (s.warehouse !== warehouse) return false;
+  let items = allStockRows.filter(s => {
     if (applyTaishanHideRule && hiddenItemCodes.has(s.itemCode)) return false;
     if (formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) === 0) return false;
     return true;
@@ -490,8 +502,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   }
   items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
-  const totalCount = currentStock.filter(s =>
-    s.warehouse === warehouse &&
+  const totalCount = allStockRows.filter(s =>
     !(applyTaishanHideRule && hiddenItemCodes.has(s.itemCode)) &&
     formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0
   ).length;
@@ -545,8 +556,19 @@ function renderFactoryMaterialTable() {
     if (a.warehouse !== '廠務') return;
     adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
   });
+  // 有些品項只存在未核完調整裡（例如組合單新增的成品，庫存.xlsx還沒出現過這個品號），
+  // 把庫存跟未核完調整的品號做聯集才不會漏掉
+  const factoryItemCodes = new Set(currentFactoryMaterial.map(r => r.itemCode));
+  const adjustmentOnlyRows = [];
+  adjustmentByCode.forEach((_, itemCode) => {
+    if (factoryItemCodes.has(itemCode)) return;
+    const itemName = currentPendingAdjustments.find(a => a.warehouse === '廠務' && a.itemCode === itemCode && a.itemName)?.itemName || '';
+    adjustmentOnlyRows.push({ itemCode, itemName, qty: 0 });
+  });
+  const allFactoryRows = [...currentFactoryMaterial, ...adjustmentOnlyRows];
+
   // 數量(含未核完調整)是0的品項不用顯示
-  let withStock = currentFactoryMaterial.filter(r => formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0)) !== 0);
+  let withStock = allFactoryRows.filter(r => formatQty(r.qty + (adjustmentByCode.get(r.itemCode) || 0)) !== 0);
   if (keyword) withStock = withStock.filter(r => (r.itemName || '').toLowerCase().includes(keyword));
   if (!withStock.length) {
     factoryMaterialTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#6b7280;">目前沒有資料</td></tr>`;
@@ -1279,6 +1301,7 @@ function parseMovementAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
+  const idxName = findColumnIndex(header, ['品名']);
   const idxInPackaged = findColumnIndex(header, ['入庫包裝數量']);
   const idxInRaw = findColumnIndex(header, ['入庫異動數量']);
   const idxOutPackaged = findColumnIndex(header, ['出庫包裝數量']);
@@ -1304,10 +1327,11 @@ function parseMovementAdjustments(sheet) {
     const whRaw = (row[idxWh] || '').toString().trim();
     if (!whRaw) continue;
     const warehouse = normalizeWarehouse(whRaw) || whRaw; // 對不到泰山/台中就當客戶名字（寄庫用）
+    const itemName = idxName !== -1 ? (row[idxName] || '').toString().trim() : '';
     const inQty = pickQty(row, idxInPackaged, idxInRaw);
     const outQty = pickQty(row, idxOutPackaged, idxOutRaw);
-    if (inQty) records.push({ itemCode: code, warehouse, deltaQty: inQty, source: '異動' });
-    if (outQty) records.push({ itemCode: code, warehouse, deltaQty: -outQty, source: '異動' });
+    if (inQty) records.push({ itemCode: code, itemName, warehouse, deltaQty: inQty, source: '異動' });
+    if (outQty) records.push({ itemCode: code, itemName, warehouse, deltaQty: -outQty, source: '異動' });
   }
   return records;
 }
@@ -1318,6 +1342,7 @@ function parseTransferAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品號']);
+  const idxName = findColumnIndex(header, ['品名']);
   const idxQtyPackaged = findColumnIndex(header, ['包裝數量']);
   const idxQtyRaw = findColumnIndex(header, ['轉撥數量']);
   const idxOutWh = findColumnIndex(header, ['轉出庫別']);
@@ -1339,8 +1364,9 @@ function parseTransferAdjustments(sheet) {
     // 正規化不到泰山/台中時，只要原始文字剛好是「廠務」就當廠務本身處理，不要整筆丟掉
     const outWh = normalizeWarehouse(row[idxOutWh]) || ((row[idxOutWh] || '').toString().trim() === '廠務' ? '廠務' : null);
     const inWh = normalizeWarehouse(row[idxInWh]) || ((row[idxInWh] || '').toString().trim() === '廠務' ? '廠務' : null);
-    if (outWh) records.push({ itemCode: code, warehouse: outWh, deltaQty: -qty, source: '轉撥' });
-    if (inWh) records.push({ itemCode: code, warehouse: inWh, deltaQty: qty, source: '轉撥' });
+    const itemName = idxName !== -1 ? (row[idxName] || '').toString().trim() : '';
+    if (outWh) records.push({ itemCode: code, itemName, warehouse: outWh, deltaQty: -qty, source: '轉撥' });
+    if (inWh) records.push({ itemCode: code, itemName, warehouse: inWh, deltaQty: qty, source: '轉撥' });
   }
   return records;
 }
@@ -1353,6 +1379,7 @@ function parseSalesAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品    號', '品號']);
+  const idxName = findColumnIndex(header, ['品    名', '品名']);
   const idxQtyPackaged = findColumnIndex(header, ['包裝數量']);
   const idxQtyRaw = findColumnIndex(header, ['銷貨數量']);
   const idxWh = findColumnIndex(header, ['庫別名稱']);
@@ -1371,7 +1398,8 @@ function parseSalesAdjustments(sheet) {
     const packagedQty = idxQtyPackaged !== -1 ? Number(row[idxQtyPackaged]) || 0 : 0;
     const qty = packagedQty || (idxQtyRaw !== -1 ? Number(row[idxQtyRaw]) || 0 : 0);
     if (!qty) continue;
-    records.push({ itemCode: code, warehouse, deltaQty: -qty, source: '銷貨' });
+    const itemName = idxName !== -1 ? (row[idxName] || '').toString().trim() : '';
+    records.push({ itemCode: code, itemName, warehouse, deltaQty: -qty, source: '銷貨' });
   }
   return records;
 }
@@ -1384,6 +1412,7 @@ function parsePurchaseAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxCode = findColumnIndex(header, ['品    號', '品號']);
+  const idxName = findColumnIndex(header, ['品    名', '品名']);
   const idxQtyPackaged = findColumnIndex(header, ['進貨包裝數量']);
   const idxQtyRaw = findColumnIndex(header, ['進貨數量']);
   const idxWh = findColumnIndex(header, ['庫別']);
@@ -1403,7 +1432,8 @@ function parsePurchaseAdjustments(sheet) {
     const packagedQty = idxQtyPackaged !== -1 ? Number(row[idxQtyPackaged]) || 0 : 0;
     const qty = packagedQty || (idxQtyRaw !== -1 ? Number(row[idxQtyRaw]) || 0 : 0);
     if (!qty) continue;
-    records.push({ itemCode: code, warehouse, deltaQty: qty, source: '進貨' });
+    const itemName = idxName !== -1 ? (row[idxName] || '').toString().trim() : '';
+    records.push({ itemCode: code, itemName, warehouse, deltaQty: qty, source: '進貨' });
   }
   return records;
 }
@@ -1417,8 +1447,10 @@ function parseAssemblyAdjustments(sheet) {
   if (!rows.length) return [];
   const header = rows[0];
   const idxFinishedCode = findColumnIndex(header, ['成品品號']);
+  const idxFinishedName = findColumnIndex(header, ['成品品名']);
   const idxFinishedWh = findColumnIndex(header, ['入庫庫別']);
   const idxComponentCode = findColumnIndex(header, ['元件品號']);
+  const idxComponentName = findColumnIndex(header, ['元件品名']);
   const idxComponentWh = findColumnIndex(header, ['出庫庫別']);
   if (idxFinishedCode === -1 || idxFinishedWh === -1 || idxComponentCode === -1 || idxComponentWh === -1) {
     throw new Error('找不到「成品品號」「入庫庫別」「元件品號」或「出庫庫別」欄位，格式可能跟預期不同');
@@ -1433,13 +1465,15 @@ function parseAssemblyAdjustments(sheet) {
     if (isRealItemCode(finishedCode)) {
       const warehouse = normalizeWarehouse(row[idxFinishedWh]);
       const qty = idxFinishedQty !== -1 ? Number(row[idxFinishedQty]) || 0 : 0;
-      if (warehouse && qty) records.push({ itemCode: finishedCode, warehouse, deltaQty: qty, source: '組合' });
+      const itemName = idxFinishedName !== -1 ? (row[idxFinishedName] || '').toString().trim() : '';
+      if (warehouse && qty) records.push({ itemCode: finishedCode, itemName, warehouse, deltaQty: qty, source: '組合' });
     }
     const componentCode = (row[idxComponentCode] || '').toString().trim();
     if (isRealItemCode(componentCode)) {
       const warehouse = normalizeWarehouse(row[idxComponentWh]);
       const qty = idxComponentQty !== -1 ? Number(row[idxComponentQty]) || 0 : 0;
-      if (warehouse && qty) records.push({ itemCode: componentCode, warehouse, deltaQty: -qty, source: '組合' });
+      const itemName = idxComponentName !== -1 ? (row[idxComponentName] || '').toString().trim() : '';
+      if (warehouse && qty) records.push({ itemCode: componentCode, itemName, warehouse, deltaQty: -qty, source: '組合' });
     }
   }
   return records;

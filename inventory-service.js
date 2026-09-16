@@ -310,14 +310,17 @@ export function subscribeToPendingAdjustments(callback, onError) {
   return subscribeToCollection('pendingAdjustments', callback, onError);
 }
 
-// records: [{ itemCode, warehouse, deltaQty, source }]
+// records: [{ itemCode, itemName, warehouse, deltaQty, source }]
 // sources：這次匯入來源涵蓋哪幾種（例如匯入「銷貨」時傳 ['銷貨']），只會覆蓋這些來源舊資料，
 // 不會動到其他來源檔案（異動/轉撥/...）之前匯入的部分——因為現在每種都是分開的檔案各自匯入。
+// itemName：如果這筆調整是全新品項（庫存.xlsx還沒出現過），泰山/台中/廠務用料/可用原料要能
+// 顯示一個沒有base資料的品項時，就得靠這裡存的品名，不能只有品號。
 export async function replacePendingAdjustments(records, sources) {
   const docs = records.map((r, i) => ({
     id: `${sanitizeIdPart(r.itemCode)}__${r.warehouse}__${sanitizeIdPart(r.source)}__${i}`,
     data: {
       itemCode: r.itemCode,
+      itemName: r.itemName || '',
       warehouse: r.warehouse,
       deltaQty: r.deltaQty || 0,
       source: r.source || '',
