@@ -44,6 +44,7 @@ const importDropZone = document.getElementById('importDropZone');
 const importFileInput = document.getElementById('importFileInput');
 const importMsg = document.getElementById('importMsg');
 const importItemsList = document.getElementById('importItemsList');
+const saveSnapshotDateInput = document.getElementById('saveSnapshotDateInput');
 const saveSnapshotBtn = document.getElementById('saveSnapshotBtn');
 const saveSnapshotMsg = document.getElementById('saveSnapshotMsg');
 const clearDailyBtn = document.getElementById('clearDailyBtn');
@@ -1881,9 +1882,12 @@ function dateStringMinusOneYear(dateStr) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+saveSnapshotDateInput.value = todayDateString();
+
 saveSnapshotBtn.addEventListener('click', async () => {
-  const date = todayDateString();
-  if (!confirm(`確定要把今天（${date}）目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成快照嗎？如果今天已經存過，會被最新的這次覆蓋。`)) return;
+  const date = saveSnapshotDateInput.value;
+  if (!date) { alert('請先選日期'); return; }
+  if (!confirm(`確定要把「${date}」目前畫面上的庫存/批號/寄庫/廠務用料/未核完調整/鎖庫存成快照嗎？如果這個日期已經存過，會被最新的這次覆蓋。`)) return;
   saveSnapshotBtn.disabled = true;
   saveSnapshotMsg.textContent = '存檔中...';
   try {
