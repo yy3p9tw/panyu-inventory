@@ -161,8 +161,11 @@ function renderConsignmentTable() {
   }
   items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
+  const taichungSumText = items.length
+    ? `，台中加總 ${formatQty(items.reduce((sum, r) => sum + consignmentLedgerTotal(r.customer, r.itemCode, '台中'), 0))}`
+    : '';
   consignmentCount.textContent = totalCount
-    ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
+    ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆${taichungSumText}` : `共 ${totalCount} 筆${taichungSumText}`)
     : '目前沒有寄庫資料';
 
   if (items.length === 0) {
