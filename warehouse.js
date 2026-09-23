@@ -37,7 +37,7 @@ function hiddenItemCodeSet() {
   );
 }
 
-function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
+function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, showQtySum) {
   const keyword = searchInputEl.value.trim().toLowerCase();
 
   const adjustmentByCode = new Map();
@@ -72,8 +72,11 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl) {
   }
   items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
+  const qtySumText = showQtySum
+    ? `，庫存加總 ${formatQty(items.reduce((sum, s) => sum + s.qty + (adjustmentByCode.get(s.itemCode) || 0), 0))}`
+    : '';
   summaryEl.textContent = totalCount
-    ? (keyword ? `共 ${totalCount} 個品項，篩選後 ${items.length} 筆` : `共 ${totalCount} 個品項`)
+    ? (keyword ? `共 ${totalCount} 個品項，篩選後 ${items.length} 筆${qtySumText}` : `共 ${totalCount} 個品項${qtySumText}`)
     : '目前沒有資料';
 
   if (items.length === 0) {
@@ -99,7 +102,7 @@ function renderTaishanTable() {
   renderWarehouseTable('泰山', taishanTableBody, taishanSearchInput, taishanSummary);
 }
 function renderTaichungTable() {
-  renderWarehouseTable('台中', taichungTableBody, taichungSearchInput, taichungSummary);
+  renderWarehouseTable('台中', taichungTableBody, taichungSearchInput, taichungSummary, true);
 }
 taishanSearchInput.addEventListener('input', renderTaishanTable);
 taichungSearchInput.addEventListener('input', renderTaichungTable);
