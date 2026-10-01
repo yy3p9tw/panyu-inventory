@@ -1,7 +1,7 @@
 // 倉管前台：純唯讀展示頁，不用登入。泰山/台中/寄庫/鎖庫都是每天從ERP拉的即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
+  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
 } from './front-common.js?v=37';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
@@ -46,7 +46,11 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, sh
     adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
   });
   const batchesByCode = buildBatchesByCode(currentBatchList, warehouse);
+  const lockByCode = buildLockByCode(currentLockedStock, warehouse);
   const hiddenCodes = hiddenItemCodeSet();
+
+  // 業務看前台不想自己心算「數量-鎖庫」，直接把鎖庫扣掉顯示淨庫存（後台還是數量+鎖庫badge分開顯示）
+  const netQty = s => formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0) - (lockByCode.get(s.itemCode)?.total || 0));
 
   // 有些品項只存在未核完調整裡（例如組合單新增的成品，庫存.xlsx還沒出現過這個品號），
   // 把庫存跟未核完調整的品號做聯集才不會漏掉
@@ -61,7 +65,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, sh
   });
   const allStockRows = [...currentStock.filter(s => s.warehouse === warehouse), ...adjustmentOnlyRows];
 
-  let items = allStockRows.filter(s => !hiddenCodes.has(s.itemCode) && formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0);
+  let items = allStockRows.filter(s => !hiddenCodes.has(s.itemCode) && netQty(s) !== 0);
   const totalCount = items.length;
   if (keyword) {
     items = items.filter(it =>
@@ -72,7 +76,7 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, sh
   items = [...items].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
   const qtySumText = showQtySum
-    ? `，庫存加總 ${formatQty(items.reduce((sum, s) => sum + s.qty + (adjustmentByCode.get(s.itemCode) || 0), 0))}`
+    ? `，庫存加總 ${formatQty(items.reduce((sum, s) => sum + netQty(s), 0))}`
     : '';
   summaryEl.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 個品項，篩選後 ${items.length} 筆${qtySumText}` : `共 ${totalCount} 個品項${qtySumText}`)
@@ -84,13 +88,12 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, sh
   }
 
   tableBody.innerHTML = items.map(s => {
-    const adjustment = adjustmentByCode.get(s.itemCode);
     const batches = batchesByCode.get(s.itemCode);
-    // 業務反應看到鎖庫標籤會以為數字要再加減，前台乾脆不顯示（數字本身本來就沒有真的扣鎖庫，只是不想顯示那個標籤）
+    // 業務看前台不想自己心算「數量-鎖庫」，數字直接是扣掉鎖庫後的淨庫存，不另外顯示鎖庫badge
     return `
     <tr>
       <td>${escapeHTML(s.itemName)}</td>
-      <td class="qty-cell">${renderQtyCell(s.qty, adjustment, null, s.expired, s.isSplit)}</td>
+      <td class="qty-cell">${renderQtyCell(netQty(s), 0, null, s.expired, s.isSplit)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
