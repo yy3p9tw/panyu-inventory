@@ -1,7 +1,7 @@
 // 倉管前台：純唯讀展示頁，不用登入。泰山/台中/寄庫/鎖庫都是每天從ERP拉的即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
+  escapeHTML, renderBatchCell, renderQtyCell, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
 } from './front-common.js?v=37';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
@@ -46,7 +46,6 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, sh
     adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
   });
   const batchesByCode = buildBatchesByCode(currentBatchList, warehouse);
-  const lockByCode = buildLockByCode(currentLockedStock, warehouse);
   const hiddenCodes = hiddenItemCodeSet();
 
   // 有些品項只存在未核完調整裡（例如組合單新增的成品，庫存.xlsx還沒出現過這個品號），
@@ -87,11 +86,11 @@ function renderWarehouseTable(warehouse, tableBody, searchInputEl, summaryEl, sh
   tableBody.innerHTML = items.map(s => {
     const adjustment = adjustmentByCode.get(s.itemCode);
     const batches = batchesByCode.get(s.itemCode);
-    const lockInfo = lockByCode.get(s.itemCode);
+    // 業務反應看到鎖庫標籤會以為數字要再加減，前台乾脆不顯示（數字本身本來就沒有真的扣鎖庫，只是不想顯示那個標籤）
     return `
     <tr>
       <td>${escapeHTML(s.itemName)}</td>
-      <td class="qty-cell">${renderQtyCell(s.qty, adjustment, lockInfo, s.expired, s.isSplit)}</td>
+      <td class="qty-cell">${renderQtyCell(s.qty, adjustment, null, s.expired, s.isSplit)}</td>
       <td>${renderBatchCell(batches)}</td>
     </tr>
   `;
