@@ -1,8 +1,8 @@
 // 倉管前台：純唯讀展示頁，不用登入。泰山/台中/寄庫/鎖庫都是每天從ERP拉的即時資料，
 // 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty
-} from './front-common.js?v=37';
+  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty, parseBatchExpiryDate
+} from './front-common.js?v=38';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -11,6 +11,10 @@ const taishanSummary = document.getElementById('taishanSummary');
 const taichungSearchInput = document.getElementById('taichungSearchInput');
 const taichungTableBody = document.getElementById('taichungTableBody');
 const taichungSummary = document.getElementById('taichungSummary');
+
+const expiringSearchInput = document.getElementById('expiringSearchInput');
+const expiringTableBody = document.getElementById('expiringTableBody');
+const expiringCount = document.getElementById('expiringCount');
 
 const consignmentSearchInput = document.getElementById('consignmentSearchInput');
 const consignmentTableBody = document.getElementById('consignmentTableBody');
@@ -108,6 +112,54 @@ function renderTaichungTable() {
 }
 taishanSearchInput.addEventListener('input', renderTaishanTable);
 taichungSearchInput.addEventListener('input', renderTaichungTable);
+
+// ---------- 快到期 ----------
+
+// 批號本身就是到期日，跟後台同一套邏輯：只看泰山/台中的批次，一年內到期、還有庫存才列出來
+function renderExpiringTable() {
+  const keyword = expiringSearchInput.value.trim().toLowerCase();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const oneYearLater = new Date(today);
+  oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+
+  let items = currentBatchList
+    .filter(r => (r.warehouse === '泰山' || r.warehouse === '台中') && formatQty(r.qty) !== 0)
+    .map(r => ({ ...r, expiryDate: parseBatchExpiryDate(r.batchNo) }))
+    .filter(r => r.expiryDate && r.expiryDate >= today && r.expiryDate <= oneYearLater);
+
+  const totalCount = items.length;
+  if (keyword) {
+    items = items.filter(it =>
+      (it.itemCode || '').toLowerCase().includes(keyword) ||
+      (it.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
+  items = [...items].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''));
+
+  expiringCount.textContent = totalCount
+    ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
+    : '目前沒有一年內到期的批次';
+
+  if (items.length === 0) {
+    expiringTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    return;
+  }
+
+  expiringTableBody.innerHTML = items.map(r => {
+    const daysLeft = Math.round((r.expiryDate - today) / 86400000);
+    return `
+    <tr>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${escapeHTML(r.warehouse)}</td>
+      <td>${r.batchNo || '-'}</td>
+      <td>${daysLeft} 天</td>
+      <td class="qty-cell">${formatQty(r.qty)}</td>
+    </tr>
+  `;
+  }).join('');
+}
+expiringSearchInput.addEventListener('input', renderExpiringTable);
 
 // ---------- 寄庫 ----------
 
@@ -252,7 +304,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ---------- 訂閱即時資料 ----------
 
 subscribeCollection('stock', rows => { currentStock = rows; renderTaishanTable(); renderTaichungTable(); });
-subscribeCollection('batchList', rows => { currentBatchList = rows; renderTaishanTable(); renderTaichungTable(); });
+subscribeCollection('batchList', rows => { currentBatchList = rows; renderTaishanTable(); renderTaichungTable(); renderExpiringTable(); });
 subscribeCollection('consignment', rows => { currentConsignment = rows; renderConsignmentTable(); });
 subscribeCollection('consignmentLedger', rows => { currentConsignmentLedger = rows; renderConsignmentTable(); });
 subscribeCollection('lockedStock', rows => {

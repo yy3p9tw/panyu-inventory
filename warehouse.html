@@ -19,6 +19,7 @@
       <div class="tab-row" id="tabRow">
         <button type="button" class="tab-btn active" data-tab="taishan">泰山</button>
         <button type="button" class="tab-btn" data-tab="taichung">台中</button>
+        <button type="button" class="tab-btn" data-tab="expiring">快到期</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
         <button type="button" class="tab-btn" data-tab="history">歷史</button>
@@ -51,6 +52,22 @@
                 <tr><th>品名</th><th>庫存</th><th>最短效期</th></tr>
               </thead>
               <tbody id="taichungTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 快到期 -->
+      <section id="tabExpiring" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <input type="text" id="expiringSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="expiringCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品名</th><th>庫別</th><th>批號(到期日)</th><th>剩餘天數</th><th>包裝數量</th></tr>
+              </thead>
+              <tbody id="expiringTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -119,6 +136,6 @@
     </div>
   </main>
 
-  <script type="module" src="warehouse.js?v=53"></script>
+  <script type="module" src="warehouse.js?v=54"></script>
 </body>
 </html>

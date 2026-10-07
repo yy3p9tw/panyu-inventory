@@ -19,6 +19,7 @@
       <div class="tab-row" id="tabRow">
         <button type="button" class="tab-btn active" data-tab="factory">廠務用料</button>
         <button type="button" class="tab-btn" data-tab="availableMaterial">可用原料(泰山)</button>
+        <button type="button" class="tab-btn" data-tab="expiring">快到期</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
         <button type="button" class="tab-btn" data-tab="history">歷史</button>
       </div>
@@ -48,6 +49,22 @@
                 <tr><th>品名</th><th>數量</th><th>批號</th></tr>
               </thead>
               <tbody id="availableMaterialTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 快到期 -->
+      <section id="tabExpiring" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <input type="text" id="expiringSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="expiringCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品名</th><th>批號(到期日)</th><th>剩餘天數</th><th>包裝數量</th></tr>
+              </thead>
+              <tbody id="expiringTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -100,6 +117,6 @@
     </div>
   </main>
 
-  <script type="module" src="factory.js?v=48"></script>
+  <script type="module" src="factory.js?v=49"></script>
 </body>
 </html>

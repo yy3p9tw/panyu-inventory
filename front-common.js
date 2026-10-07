@@ -14,6 +14,18 @@ export function formatQty(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+// 批號本身就是到期日（YYYYMMDD），「快到期」分頁用這個解析成真正的日期
+export function parseBatchExpiryDate(batchNo) {
+  const s = (batchNo || '').toString().trim();
+  if (!/^\d{8}$/.test(s)) return null;
+  const year = Number(s.slice(0, 4));
+  const month = Number(s.slice(4, 6));
+  const day = Number(s.slice(6, 8));
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return d;
+}
+
 // 批號是 YYYYMMDD，字串排序就是時間順序。只顯示最短（最早到期）那個批號，
 // 同品項其他批號收在「共 N 筆」點開才看得到。
 export function renderBatchCell(batches) {
