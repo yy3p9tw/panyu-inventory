@@ -39,6 +39,7 @@
         <button type="button" class="tab-btn" data-tab="reference">參照</button>
         <button type="button" class="tab-btn" data-tab="summary">彙總</button>
         <button type="button" class="tab-btn" data-tab="batch">批號</button>
+        <button type="button" class="tab-btn" data-tab="expiring">快到期</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
@@ -162,6 +163,24 @@
                 <tr><th>品號</th><th>品名</th><th>庫別</th><th>批號</th><th>包裝數量</th></tr>
               </thead>
               <tbody id="batchTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 快到期（批號本身就是到期日YYYYMMDD，一年內到期且還有庫存的批次） -->
+      <section id="tabExpiring" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>快到期</h2>
+          <p class="hint-text">列出一年內會到期、目前還有庫存的批次，照到期日由近到遠排序。</p>
+          <input type="text" id="expiringSearchInput" placeholder="搜尋品號或品名..." />
+          <p class="hint-text" id="expiringCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>庫別</th><th>批號(到期日)</th><th>剩餘天數</th><th>包裝數量</th></tr>
+              </thead>
+              <tbody id="expiringTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -360,6 +379,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=57"></script>
+  <script type="module" src="app.js?v=58"></script>
 </body>
 </html>

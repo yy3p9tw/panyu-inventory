@@ -75,6 +75,9 @@ const summaryCount = document.getElementById('summaryCount');
 const batchSearchInput = document.getElementById('batchSearchInput');
 const batchTableBody = document.getElementById('batchTableBody');
 const batchCount = document.getElementById('batchCount');
+const expiringSearchInput = document.getElementById('expiringSearchInput');
+const expiringTableBody = document.getElementById('expiringTableBody');
+const expiringCount = document.getElementById('expiringCount');
 
 const consignmentSearchInput = document.getElementById('consignmentSearchInput');
 const consignmentTableBody = document.getElementById('consignmentTableBody');
@@ -249,6 +252,7 @@ function applyRoleVisibility() {
   const referenceBtn = document.querySelector('.tab-btn[data-tab="reference"]');
   const summaryBtn = document.querySelector('.tab-btn[data-tab="summary"]');
   const batchBtn = document.querySelector('.tab-btn[data-tab="batch"]');
+  const expiringBtn = document.querySelector('.tab-btn[data-tab="expiring"]');
   const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
   const lockedStockBtn = document.querySelector('.tab-btn[data-tab="lockedStock"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
@@ -263,6 +267,7 @@ function applyRoleVisibility() {
   referenceBtn.style.display = canSeeFactory ? '' : 'none';
   summaryBtn.style.display = canSeeSummary ? '' : 'none';
   batchBtn.style.display = canSeeStock ? '' : 'none';
+  expiringBtn.style.display = (canSeeStock || canSeeFactory) ? '' : 'none';
   consignmentBtn.style.display = canSeeStock ? '' : 'none';
   lockedStockBtn.style.display = canSeeStock ? '' : 'none';
   importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary || isAdmin) ? '' : 'none';
@@ -330,6 +335,7 @@ function applyRoleVisibility() {
     unsubscribeBatchList = subscribeToBatchList(rows => {
       currentBatchList = rows;
       renderBatchTable();
+      renderExpiringTable();
       renderTaishanTable();
       renderTaichungTable();
       renderFactoryMaterialTable();
@@ -818,6 +824,68 @@ function renderBatchTable() {
 }
 
 batchSearchInput.addEventListener('input', renderBatchTable);
+
+// ---------- 快到期 ----------
+
+// 批號本身就是到期日（YYYYMMDD），不是另外存的欄位——跟批號分頁同一份batchList資料，
+// 只是篩選成「今天到一年後之間會到期、還有庫存」的批次，照到期日排序方便優先處理
+function parseBatchExpiryDate(batchNo) {
+  const s = (batchNo || '').toString().trim();
+  if (!/^\d{8}$/.test(s)) return null;
+  const year = Number(s.slice(0, 4));
+  const month = Number(s.slice(4, 6));
+  const day = Number(s.slice(6, 8));
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return d;
+}
+
+function renderExpiringTable() {
+  const keyword = expiringSearchInput.value.trim().toLowerCase();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const oneYearLater = new Date(today);
+  oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+
+  let items = currentBatchList
+    .filter(r => formatQty(r.qty) !== 0)
+    .map(r => ({ ...r, expiryDate: parseBatchExpiryDate(r.batchNo) }))
+    .filter(r => r.expiryDate && r.expiryDate >= today && r.expiryDate <= oneYearLater);
+
+  const totalCount = items.length;
+  if (keyword) {
+    items = items.filter(it =>
+      (it.itemCode || '').toLowerCase().includes(keyword) ||
+      (it.itemName || '').toLowerCase().includes(keyword)
+    );
+  }
+  items = [...items].sort((a, b) => (a.batchNo || '').localeCompare(b.batchNo || ''));
+
+  expiringCount.textContent = totalCount
+    ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆` : `共 ${totalCount} 筆`)
+    : '目前沒有一年內到期的批次';
+
+  if (items.length === 0) {
+    expiringTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#6b7280;">沒有符合的品項</td></tr>`;
+    return;
+  }
+
+  expiringTableBody.innerHTML = items.map(r => {
+    const daysLeft = Math.round((r.expiryDate - today) / 86400000);
+    return `
+    <tr>
+      <td>${escapeHTML(r.itemCode)}</td>
+      <td>${escapeHTML(r.itemName)}</td>
+      <td>${escapeHTML(r.warehouse)}</td>
+      <td>${r.batchNo || '-'}</td>
+      <td>${daysLeft} 天</td>
+      <td>${formatQty(r.qty)}</td>
+    </tr>
+  `;
+  }).join('');
+}
+
+expiringSearchInput.addEventListener('input', renderExpiringTable);
 
 // ---------- 寄庫 ----------
 
