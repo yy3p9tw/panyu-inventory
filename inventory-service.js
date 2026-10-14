@@ -288,19 +288,16 @@ function consignmentLedgerImportDocId(customer, itemCode, warehouse, date) {
   return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}__${warehouse}__${date}`;
 }
 
+// 整個 consignmentLedger collection 清空再寫入（不是只覆蓋這次檔案裡有的客戶+品項）——
+// 使用者確認過要這樣做：如果試算表裡刪掉/改掉了某一列，重新匯入才會真的反映出來，
+// 不然舊的merge寫法只會一直疊加，刪掉的列永遠不會消失。連手動在進出明細面板新增的紀錄
+// 也會被這個動作一起清掉，呼叫端要在按下確認前講清楚這個風險。
 export async function importConsignmentLedgerEntries(records) {
-  const chunks = [];
-  const remaining = [...records];
-  while (remaining.length) chunks.push(remaining.splice(0, 450));
-  for (const chunk of chunks) {
-    const batch = writeBatch(db);
-    chunk.forEach(r => {
-      const ref = doc(db, 'consignmentLedger', consignmentLedgerImportDocId(r.customer, r.itemCode, r.warehouse, r.date));
-      batch.set(ref, { ...r, updatedAt: Date.now() }, { merge: true });
-    });
-    await batch.commit();
-  }
-  return { written: records.length };
+  const docs = records.map(r => ({
+    id: consignmentLedgerImportDocId(r.customer, r.itemCode, r.warehouse, r.date),
+    data: { ...r, updatedAt: Date.now() }
+  }));
+  return replaceWholeCollection('consignmentLedger', docs);
 }
 
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------

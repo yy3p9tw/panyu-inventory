@@ -18,7 +18,7 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData
-} from './inventory-service.js?v=38';
+} from './inventory-service.js?v=39';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -1753,13 +1753,13 @@ const IMPORT_ITEMS = [
   },
   {
     key: 'consignmentLedgerFromMaster',
-    label: '寄庫進出紀錄（寄庫分頁，匯入歷史記錄，用日期當ID可重複匯入不會重複）',
+    label: '寄庫進出紀錄（寄庫分頁，會整個覆蓋掉現有的進出紀錄，連手動新增的也會被清掉）',
     matchesFilename: name => name.includes('庫存YU'),
     prepare: wb => parseConsignmentLedgerFromMaster(wb),
-    describe: result => `共 ${result.records.length} 筆進出紀錄${result.skipped ? `，另有 ${result.skipped} 筆因為找不到對應的寄庫品號（客戶+品名在目前的寄庫總數裡查不到）被略過` : ''}`,
+    describe: result => `這份檔案有 ${result.records.length} 筆進出紀錄${result.skipped ? `，另有 ${result.skipped} 筆因為找不到對應的寄庫品號（客戶+品名在目前的寄庫總數裡查不到）被略過` : ''}。注意：確認匯入會把「寄庫進出紀錄」整個清空，只留這份檔案裡的資料，手動新增過的紀錄也會一起被清掉。`,
     run: async result => {
       const written = await importConsignmentLedgerEntries(result.records);
-      return `已匯入寄庫進出紀錄 ${written.written} 筆`;
+      return `已覆蓋寄庫進出紀錄：清掉了 ${written.deleted} 筆舊的，寫入 ${written.written} 筆新的`;
     }
   },
   {
