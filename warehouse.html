@@ -22,6 +22,7 @@
         <button type="button" class="tab-btn" data-tab="expiring">快到期</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
+        <button type="button" class="tab-btn" data-tab="stocktake">盤點</button>
         <button type="button" class="tab-btn" data-tab="history">歷史</button>
       </div>
 
@@ -105,6 +106,39 @@
         </div>
       </section>
 
+      <!-- 盤點：只能看/列印空白表單，數字實體寫在紙上，不在這裡輸入 -->
+      <section id="tabStocktake" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px; flex:1; min-width:240px;">
+              選擇盤點
+              <select id="stocktakeSessionSelect" style="padding:6px 8px;"></select>
+            </label>
+            <button type="button" id="stocktakePrintBtn">列印空白表單</button>
+          </div>
+          <p class="hint-text" id="stocktakeCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>客戶</th><th>盤點數量</th></tr>
+              </thead>
+              <tbody id="stocktakeTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 盤點空白表單：只在列印時顯示，平常用style.css的.print-only隱藏起來 -->
+      <div id="stocktakePrintSheet" class="print-only">
+        <h2 id="stocktakePrintTitle"></h2>
+        <table class="data-table">
+          <thead>
+            <tr><th>品號</th><th>品名</th><th>客戶</th><th>盤點數量</th></tr>
+          </thead>
+          <tbody id="stocktakePrintTableBody"></tbody>
+        </table>
+      </div>
+
       <!-- 歷史 -->
       <section id="tabHistory" class="tab-panel" style="display:none;">
         <div class="panel">
@@ -136,6 +170,6 @@
     </div>
   </main>
 
-  <script type="module" src="warehouse.js?v=54"></script>
+  <script type="module" src="warehouse.js?v=55"></script>
 </body>
 </html>

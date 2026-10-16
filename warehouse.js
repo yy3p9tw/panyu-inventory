@@ -24,6 +24,13 @@ const lockedStockSearchInput = document.getElementById('lockedStockSearchInput')
 const lockedStockCount = document.getElementById('lockedStockCount');
 const lockedStockTableBody = document.getElementById('lockedStockTableBody');
 
+const stocktakeSessionSelect = document.getElementById('stocktakeSessionSelect');
+const stocktakePrintBtn = document.getElementById('stocktakePrintBtn');
+const stocktakeCount = document.getElementById('stocktakeCount');
+const stocktakeTableBody = document.getElementById('stocktakeTableBody');
+const stocktakePrintTitle = document.getElementById('stocktakePrintTitle');
+const stocktakePrintTableBody = document.getElementById('stocktakePrintTableBody');
+
 let currentStock = [];
 let currentBatchList = [];
 let currentConsignment = [];
@@ -31,6 +38,9 @@ let currentConsignmentLedger = [];
 let currentLockedStock = [];
 let currentPendingAdjustments = [];
 let currentItemReference = [];
+let currentStocktakeSessions = [];
+let currentStocktakeItems = [];
+let selectedStocktakeSessionId = null;
 
 // ---------- 泰山 / 台中 ----------
 
@@ -279,6 +289,76 @@ function renderLockedStockTable() {
 }
 lockedStockSearchInput.addEventListener('input', renderLockedStockTable);
 
+// ---------- 盤點 ----------
+// 前台只能看/列印後台已經產生好的空白盤點表（品號/品名/客戶，不顯示系統數量），
+// 不能建立/刪除盤點、也不能輸入盤點數量——那些都是後台才能做的事。
+
+function renderStocktakeSessionSelect() {
+  const sorted = [...currentStocktakeSessions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!sorted.length) {
+    stocktakeSessionSelect.innerHTML = '<option value="">目前沒有盤點紀錄</option>';
+    selectedStocktakeSessionId = null;
+    renderStocktakeTable();
+    return;
+  }
+  const keepSelected = sorted.some(s => s.id === selectedStocktakeSessionId);
+  stocktakeSessionSelect.innerHTML = sorted.map(s =>
+    `<option value="${s.id}">${escapeHTML(s.warehouse)} - ${new Date(s.createdAt).toLocaleString('zh-TW')}（${s.itemCount}筆）</option>`
+  ).join('');
+  selectedStocktakeSessionId = keepSelected ? selectedStocktakeSessionId : sorted[0].id;
+  stocktakeSessionSelect.value = selectedStocktakeSessionId;
+  renderStocktakeTable();
+}
+
+function stocktakeItemsForSelectedSession() {
+  return currentStocktakeItems
+    .filter(it => it.sessionId === selectedStocktakeSessionId)
+    .sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+}
+
+function renderStocktakeTable() {
+  const items = stocktakeItemsForSelectedSession();
+  stocktakeCount.textContent = selectedStocktakeSessionId
+    ? `共 ${items.length} 筆`
+    : '目前沒有盤點表可以看';
+
+  if (!items.length) {
+    stocktakeTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">沒有資料</td></tr>`;
+    return;
+  }
+  stocktakeTableBody.innerHTML = items.map(it => `
+    <tr>
+      <td>${escapeHTML(it.itemCode)}</td>
+      <td>${escapeHTML(it.itemName)}</td>
+      <td>${it.customer ? escapeHTML(it.customer) : ''}</td>
+      <td></td>
+    </tr>
+  `).join('');
+}
+
+stocktakeSessionSelect.addEventListener('change', () => {
+  selectedStocktakeSessionId = stocktakeSessionSelect.value || null;
+  renderStocktakeTable();
+});
+
+stocktakePrintBtn.addEventListener('click', () => {
+  if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
+  const session = currentStocktakeSessions.find(s => s.id === selectedStocktakeSessionId);
+  const items = stocktakeItemsForSelectedSession();
+  stocktakePrintTitle.textContent = session
+    ? `${session.warehouse} 盤點表（${new Date(session.createdAt).toLocaleDateString('zh-TW')}）`
+    : '盤點表';
+  stocktakePrintTableBody.innerHTML = items.map(it => `
+    <tr>
+      <td>${escapeHTML(it.itemCode)}</td>
+      <td>${escapeHTML(it.itemName)}</td>
+      <td>${it.customer ? escapeHTML(it.customer) : ''}</td>
+      <td></td>
+    </tr>
+  `).join('');
+  window.print();
+});
+
 // ---------- 歷史 ----------
 
 wireHistoryQuery({
@@ -324,3 +404,5 @@ subscribeCollection('itemReference', rows => {
   renderTaishanTable();
   renderTaichungTable();
 });
+subscribeCollection('stocktakeSessions', rows => { currentStocktakeSessions = rows; renderStocktakeSessionSelect(); });
+subscribeCollection('stocktakeItems', rows => { currentStocktakeItems = rows; renderStocktakeTable(); });
