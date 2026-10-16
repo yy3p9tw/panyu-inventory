@@ -1,6 +1,6 @@
 // 前台展示頁共用的小工具：純讀取、不需要登入。
 import { db } from './firebase-config.js?v=34';
-import { collection, doc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 export function escapeHTML(str) {
   const div = document.createElement('div');
@@ -73,12 +73,17 @@ export function buildBatchesByCode(batchList, warehouse) {
   return map;
 }
 
-export function subscribeCollection(name, callback) {
-  return onSnapshot(
-    collection(db, name),
-    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
-    err => console.error(`讀取 ${name} 失敗`, err)
-  );
+// 前台頁面不用即時監聽(onSnapshot)——資料本來就是每天匯入一次，即時監聽的長連線在手機上
+// 螢幕關掉又開、切換網路都會偷偷重新連線、重讀整個collection，造成讀取量暴增。
+// 改成讀一次就好，想看最新資料按頁面上的「重新整理」按鈕重新呼叫。
+export async function fetchCollectionOnce(name) {
+  try {
+    const snapshot = await getDocs(collection(db, name));
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error(`讀取 ${name} 失敗`, err);
+    return [];
+  }
 }
 
 // 歷史：跟後台「今天完成」存的快照是同一份 dailySnapshots collection，一個日期一種資料類型各自一份文件。

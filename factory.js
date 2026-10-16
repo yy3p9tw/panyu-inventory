@@ -1,6 +1,6 @@
-// 廠務前台：純唯讀展示頁，不用登入。廠務用料/可用原料(泰山)/鎖庫都是即時資料，
-// 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
-import { escapeHTML, renderBatchCell, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty, parseBatchExpiryDate } from './front-common.js?v=38';
+// 廠務前台：純唯讀展示頁，不用登入。跟後台管理系統（index.html）共用同一批 Firestore collection，
+// 只是這裡完全不能編輯。資料每天匯入一次，開頁面讀一次就好，不用即時監聽（見 loadAllData）。
+import { escapeHTML, renderBatchCell, buildBatchesByCode, fetchCollectionOnce, wireHistoryQuery, formatQty, parseBatchExpiryDate } from './front-common.js?v=39';
 
 const factoryMaterialSearchInput = document.getElementById('factoryMaterialSearchInput');
 const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');
@@ -201,11 +201,35 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// ---------- 訂閱即時資料 ----------
+// ---------- 載入資料 ----------
+// 資料是每天匯入一次，前台不用即時監聽，開頁面讀一次就好，要看最新的按「重新整理」
 
-subscribeCollection('stock', rows => { currentStock = rows; renderAvailableMaterialTable(); });
-subscribeCollection('batchList', rows => { currentBatchList = rows; renderFactoryMaterialTable(); renderAvailableMaterialTable(); renderExpiringTable(); });
-subscribeCollection('factoryMaterial', rows => { currentFactoryMaterial = rows; renderFactoryMaterialTable(); });
-subscribeCollection('itemReference', rows => { currentItemReference = rows; renderAvailableMaterialTable(); });
-subscribeCollection('lockedStock', rows => { currentLockedStock = rows; renderLockedStockTable(); });
-subscribeCollection('pendingAdjustments', rows => { currentPendingAdjustments = rows; renderFactoryMaterialTable(); renderAvailableMaterialTable(); });
+const refreshBtn = document.getElementById('refreshBtn');
+const refreshStatus = document.getElementById('refreshStatus');
+
+async function loadAllData() {
+  refreshBtn.disabled = true;
+  refreshStatus.textContent = '讀取中...';
+  try {
+    [currentStock, currentBatchList, currentFactoryMaterial, currentItemReference, currentLockedStock, currentPendingAdjustments] = await Promise.all([
+      fetchCollectionOnce('stock'),
+      fetchCollectionOnce('batchList'),
+      fetchCollectionOnce('factoryMaterial'),
+      fetchCollectionOnce('itemReference'),
+      fetchCollectionOnce('lockedStock'),
+      fetchCollectionOnce('pendingAdjustments')
+    ]);
+    renderFactoryMaterialTable();
+    renderAvailableMaterialTable();
+    renderExpiringTable();
+    renderLockedStockTable();
+    refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  } catch (err) {
+    refreshStatus.textContent = '讀取失敗：' + err.message;
+  } finally {
+    refreshBtn.disabled = false;
+  }
+}
+
+refreshBtn.addEventListener('click', loadAllData);
+loadAllData();

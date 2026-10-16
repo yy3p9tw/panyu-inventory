@@ -1,8 +1,8 @@
-// 倉管前台：純唯讀展示頁，不用登入。泰山/台中/寄庫/鎖庫都是每天從ERP拉的即時資料，
-// 跟後台管理系統（index.html）共用同一批 Firestore collection，只是這裡完全不能編輯。
+// 倉管前台：純唯讀展示頁，不用登入。跟後台管理系統（index.html）共用同一批 Firestore collection，
+// 只是這裡完全不能編輯。資料每天匯入一次，開頁面讀一次就好，不用即時監聽（見 loadAllData）。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, subscribeCollection, wireHistoryQuery, formatQty, parseBatchExpiryDate
-} from './front-common.js?v=38';
+  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, fetchCollectionOnce, wireHistoryQuery, formatQty, parseBatchExpiryDate
+} from './front-common.js?v=39';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -381,28 +381,44 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// ---------- 訂閱即時資料 ----------
+// ---------- 載入資料 ----------
+// 資料是每天匯入一次，前台不用即時監聽，開頁面讀一次就好，要看最新的按「重新整理」
 
-subscribeCollection('stock', rows => { currentStock = rows; renderTaishanTable(); renderTaichungTable(); });
-subscribeCollection('batchList', rows => { currentBatchList = rows; renderTaishanTable(); renderTaichungTable(); renderExpiringTable(); });
-subscribeCollection('consignment', rows => { currentConsignment = rows; renderConsignmentTable(); });
-subscribeCollection('consignmentLedger', rows => { currentConsignmentLedger = rows; renderConsignmentTable(); });
-subscribeCollection('lockedStock', rows => {
-  currentLockedStock = rows;
-  renderTaishanTable();
-  renderTaichungTable();
-  renderLockedStockTable();
-});
-subscribeCollection('pendingAdjustments', rows => {
-  currentPendingAdjustments = rows;
-  renderTaishanTable();
-  renderTaichungTable();
-  renderConsignmentTable();
-});
-subscribeCollection('itemReference', rows => {
-  currentItemReference = rows;
-  renderTaishanTable();
-  renderTaichungTable();
-});
-subscribeCollection('stocktakeSessions', rows => { currentStocktakeSessions = rows; renderStocktakeSessionSelect(); });
-subscribeCollection('stocktakeItems', rows => { currentStocktakeItems = rows; renderStocktakeTable(); });
+const refreshBtn = document.getElementById('refreshBtn');
+const refreshStatus = document.getElementById('refreshStatus');
+
+async function loadAllData() {
+  refreshBtn.disabled = true;
+  refreshStatus.textContent = '讀取中...';
+  try {
+    [
+      currentStock, currentBatchList, currentConsignment, currentConsignmentLedger,
+      currentLockedStock, currentPendingAdjustments, currentItemReference,
+      currentStocktakeSessions, currentStocktakeItems
+    ] = await Promise.all([
+      fetchCollectionOnce('stock'),
+      fetchCollectionOnce('batchList'),
+      fetchCollectionOnce('consignment'),
+      fetchCollectionOnce('consignmentLedger'),
+      fetchCollectionOnce('lockedStock'),
+      fetchCollectionOnce('pendingAdjustments'),
+      fetchCollectionOnce('itemReference'),
+      fetchCollectionOnce('stocktakeSessions'),
+      fetchCollectionOnce('stocktakeItems')
+    ]);
+    renderTaishanTable();
+    renderTaichungTable();
+    renderExpiringTable();
+    renderConsignmentTable();
+    renderLockedStockTable();
+    renderStocktakeSessionSelect();
+    refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  } catch (err) {
+    refreshStatus.textContent = '讀取失敗：' + err.message;
+  } finally {
+    refreshBtn.disabled = false;
+  }
+}
+
+refreshBtn.addEventListener('click', loadAllData);
+loadAllData();
