@@ -183,6 +183,15 @@ main {
   }
 }
 
+/* 盤點空白表單：平常不顯示，按「列印空白表單」時才切到這個畫面單獨印出來 */
+.print-only { display: none; }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-only, .print-only * { visibility: visible; }
+  .print-only { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+}
+
 /* 泰山/台中即時庫存表：固定欄寬比例，兩個分頁的表格才會長得一樣，不會因為內容長短而跑版 */
 .wh-stock-table {
   table-layout: fixed;

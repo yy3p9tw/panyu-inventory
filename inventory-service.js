@@ -430,3 +430,65 @@ export async function deleteOldSnapshots(cutoffDate) {
   }
   return { deleted: refs.length };
 }
+
+// ---------- 盤點：一次實體盤點產生一個 session，底下每個品項各一筆 stocktakeItems 文件 ----------
+// 盤點表要帶去倉庫手寫，盤完才回來打進系統，所以品項清單是「產生盤點表」當下就鎖定快照（連同系統數量），
+// 不是即時跟著庫存變動——不然盤點期間如果又匯入新的一天資料，表單對不上，使用者會搞混。
+
+export function subscribeToStocktakeSessions(callback, onError) {
+  return subscribeToCollection('stocktakeSessions', callback, onError);
+}
+
+export function subscribeToStocktakeItems(sessionId, callback, onError) {
+  return onSnapshot(
+    query(collection(db, 'stocktakeItems'), where('sessionId', '==', sessionId)),
+    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
+    onError
+  );
+}
+
+// items: [{ itemCode, itemName, customer(寄庫品項才有，一般庫存是''), systemQty }]
+// 系統數量在產生當下就鎖定存起來，盤點數量(countedQty)留null等使用者之後填，備註(remark)是差異原因
+export async function createStocktakeSession(warehouse, items) {
+  const sessionRef = doc(collection(db, 'stocktakeSessions'));
+  await setDoc(sessionRef, { warehouse, itemCount: items.length, createdAt: Date.now() });
+  const chunks = [];
+  const remaining = [...items];
+  while (remaining.length) chunks.push(remaining.splice(0, 450));
+  for (const chunk of chunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(it => {
+      const ref = doc(collection(db, 'stocktakeItems'));
+      batch.set(ref, {
+        sessionId: sessionRef.id,
+        itemCode: it.itemCode,
+        itemName: it.itemName || '',
+        customer: it.customer || '',
+        systemQty: it.systemQty || 0,
+        countedQty: null,
+        remark: '',
+        updatedAt: Date.now()
+      });
+    });
+    await batch.commit();
+  }
+  return { sessionId: sessionRef.id };
+}
+
+export async function updateStocktakeItem(itemDocId, fields) {
+  const ref = doc(db, 'stocktakeItems', itemDocId);
+  await setDoc(ref, { ...fields, updatedAt: Date.now() }, { merge: true });
+}
+
+// 刪除整個盤點session（連同底下所有品項），盤錯一次重來用
+export async function deleteStocktakeSession(sessionId) {
+  await deleteDoc(doc(db, 'stocktakeSessions', sessionId));
+  const snap = await getDocs(query(collection(db, 'stocktakeItems'), where('sessionId', '==', sessionId)));
+  const refs = snap.docs.map(d => d.ref);
+  for (let i = 0; i < refs.length; i += 500) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 500).forEach(ref => batch.delete(ref));
+    await batch.commit();
+  }
+  return { deleted: refs.length };
+}

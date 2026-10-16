@@ -17,8 +17,9 @@ import {
   subscribeToPendingAdjustments, replacePendingAdjustments,
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
-  clearDailyErpData
-} from './inventory-service.js?v=39';
+  clearDailyErpData,
+  subscribeToStocktakeSessions, subscribeToStocktakeItems, createStocktakeSession, updateStocktakeItem, deleteStocktakeSession
+} from './inventory-service.js?v=40';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -103,6 +104,17 @@ const lockedStockSearchInput = document.getElementById('lockedStockSearchInput')
 const lockedStockCount = document.getElementById('lockedStockCount');
 const lockedStockTableBody = document.getElementById('lockedStockTableBody');
 
+const stocktakeNewWarehouse = document.getElementById('stocktakeNewWarehouse');
+const stocktakeCreateBtn = document.getElementById('stocktakeCreateBtn');
+const stocktakeCreateMsg = document.getElementById('stocktakeCreateMsg');
+const stocktakeSessionSelect = document.getElementById('stocktakeSessionSelect');
+const stocktakePrintBtn = document.getElementById('stocktakePrintBtn');
+const stocktakeDeleteBtn = document.getElementById('stocktakeDeleteBtn');
+const stocktakeCount = document.getElementById('stocktakeCount');
+const stocktakeTableBody = document.getElementById('stocktakeTableBody');
+const stocktakePrintTitle = document.getElementById('stocktakePrintTitle');
+const stocktakePrintTableBody = document.getElementById('stocktakePrintTableBody');
+
 const WAREHOUSES = ['泰山', '台中'];
 const ROLES = ['泰山倉管', '台中倉管', '廠務', '會計', '管理員'];
 
@@ -130,6 +142,9 @@ let currentConsignment = [];
 let currentPendingAdjustments = [];
 let currentLockedStock = [];
 let currentConsignmentLedger = [];
+let currentStocktakeSessions = [];
+let currentStocktakeItems = [];
+let selectedStocktakeSessionId = null;
 let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
@@ -141,6 +156,8 @@ let unsubscribeConsignment = null;
 let unsubscribePendingAdjustments = null;
 let unsubscribeLockedStock = null;
 let unsubscribeConsignmentLedger = null;
+let unsubscribeStocktakeSessions = null;
+let unsubscribeStocktakeItems = null;
 
 // ---------- 登入 ----------
 
@@ -186,6 +203,8 @@ onAuthStateChanged(auth, async user => {
   if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
   if (unsubscribeLockedStock) { unsubscribeLockedStock(); unsubscribeLockedStock = null; }
   if (unsubscribeConsignmentLedger) { unsubscribeConsignmentLedger(); unsubscribeConsignmentLedger = null; }
+  if (unsubscribeStocktakeSessions) { unsubscribeStocktakeSessions(); unsubscribeStocktakeSessions = null; }
+  if (unsubscribeStocktakeItems) { unsubscribeStocktakeItems(); unsubscribeStocktakeItems = null; }
   currentRoles = [];
   currentStock = [];
   currentUsers = [];
@@ -197,6 +216,9 @@ onAuthStateChanged(auth, async user => {
   currentPendingAdjustments = [];
   currentLockedStock = [];
   currentConsignmentLedger = [];
+  currentStocktakeSessions = [];
+  currentStocktakeItems = [];
+  selectedStocktakeSessionId = null;
   applyRoleVisibility(); // 立刻把畫面收回「沒有任何角色」狀態，避免短暫殘留上一個帳號看到的東西
 
   if (user) {
@@ -255,6 +277,7 @@ function applyRoleVisibility() {
   const expiringBtn = document.querySelector('.tab-btn[data-tab="expiring"]');
   const consignmentBtn = document.querySelector('.tab-btn[data-tab="consignment"]');
   const lockedStockBtn = document.querySelector('.tab-btn[data-tab="lockedStock"]');
+  const stocktakeBtn = document.querySelector('.tab-btn[data-tab="stocktake"]');
   const importBtn = document.querySelector('.tab-btn[data-tab="import"]');
   const historyBtn = document.querySelector('.tab-btn[data-tab="history"]');
   const usersBtn = document.querySelector('.tab-btn[data-tab="users"]');
@@ -270,6 +293,7 @@ function applyRoleVisibility() {
   expiringBtn.style.display = (canSeeStock || canSeeFactory) ? '' : 'none';
   consignmentBtn.style.display = canSeeStock ? '' : 'none';
   lockedStockBtn.style.display = canSeeStock ? '' : 'none';
+  stocktakeBtn.style.display = canSeeStock ? '' : 'none';
   importBtn.style.display = (canSeeStock || canSeeFactory || canSeeSummary || isAdmin) ? '' : 'none';
   historyBtn.style.display = (canSeeStock || canSeeFactory) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
@@ -362,13 +386,22 @@ function applyRoleVisibility() {
       renderConsignmentTable();
       renderConsignLedgerPanel();
     });
+    unsubscribeStocktakeSessions = subscribeToStocktakeSessions(rows => {
+      currentStocktakeSessions = rows;
+      renderStocktakeSessionSelect();
+    });
   } else if (!canSeeStock && unsubscribeConsignment) {
     unsubscribeConsignment(); unsubscribeConsignment = null;
     unsubscribeLockedStock(); unsubscribeLockedStock = null;
     unsubscribeConsignmentLedger(); unsubscribeConsignmentLedger = null;
+    unsubscribeStocktakeSessions(); unsubscribeStocktakeSessions = null;
+    if (unsubscribeStocktakeItems) { unsubscribeStocktakeItems(); unsubscribeStocktakeItems = null; }
     currentConsignment = [];
     currentLockedStock = [];
     currentConsignmentLedger = [];
+    currentStocktakeSessions = [];
+    currentStocktakeItems = [];
+    selectedStocktakeSessionId = null;
   }
 
   // 未核完調整廠務物料分頁也要用（可用原料(泰山)的顯示數字要加減未核完調整），
@@ -1174,6 +1207,165 @@ lockedStockAddBtn.addEventListener('click', async () => {
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
+});
+
+// ---------- 盤點 ----------
+
+// 品項範圍＝這個倉庫自己的庫存(含未核完調整) + 寄庫裡分配到這個倉庫的客戶品項（用進出紀錄算，
+// 跟寄庫分頁泰山/台中欄位同一套邏輯）。這個函式只在「產生盤點表」當下呼叫一次，之後就是存在
+// Firestore 裡的固定快照，不會再跟著即時庫存變動。
+function buildStocktakeItems(warehouse) {
+  const adjustmentByCode = new Map();
+  currentPendingAdjustments.forEach(a => {
+    if (a.warehouse !== warehouse) return;
+    adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
+  });
+
+  const stockItems = currentStock
+    .filter(s => s.warehouse === warehouse)
+    .map(s => ({
+      itemCode: s.itemCode,
+      itemName: s.itemName,
+      customer: '',
+      systemQty: formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0))
+    }))
+    .filter(it => it.systemQty !== 0);
+
+  const consignmentItems = [];
+  currentConsignment.forEach(r => {
+    const summary = consignmentLedgerSummary(r.customer, r.itemCode, warehouse);
+    const qty = summary ? formatQty(summary.total) : 0;
+    if (qty !== 0) consignmentItems.push({ itemCode: r.itemCode, itemName: r.itemName, customer: r.customer, systemQty: qty });
+  });
+
+  return [...stockItems, ...consignmentItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+}
+
+function renderStocktakeSessionSelect() {
+  const sorted = [...currentStocktakeSessions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!sorted.length) {
+    stocktakeSessionSelect.innerHTML = '<option value="">目前沒有盤點紀錄</option>';
+    switchStocktakeSession(null);
+    return;
+  }
+  const keepSelected = sorted.some(s => s.id === selectedStocktakeSessionId);
+  stocktakeSessionSelect.innerHTML = sorted.map(s =>
+    `<option value="${s.id}">${escapeHTML(s.warehouse)} - ${new Date(s.createdAt).toLocaleString('zh-TW')}（${s.itemCount}筆）</option>`
+  ).join('');
+  const nextId = keepSelected ? selectedStocktakeSessionId : sorted[0].id;
+  stocktakeSessionSelect.value = nextId;
+  if (nextId !== selectedStocktakeSessionId) switchStocktakeSession(nextId);
+}
+
+function switchStocktakeSession(sessionId) {
+  if (unsubscribeStocktakeItems) { unsubscribeStocktakeItems(); unsubscribeStocktakeItems = null; }
+  selectedStocktakeSessionId = sessionId;
+  currentStocktakeItems = [];
+  if (!sessionId) {
+    renderStocktakeTable();
+    return;
+  }
+  unsubscribeStocktakeItems = subscribeToStocktakeItems(sessionId, rows => {
+    currentStocktakeItems = rows;
+    renderStocktakeTable();
+  });
+}
+
+function renderStocktakeTable() {
+  const items = [...currentStocktakeItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  stocktakeCount.textContent = selectedStocktakeSessionId
+    ? `共 ${items.length} 筆`
+    : '請先產生盤點表，或從上面選一份已經存在的盤點';
+
+  if (!items.length) {
+    stocktakeTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#6b7280;">沒有資料</td></tr>`;
+    return;
+  }
+
+  stocktakeTableBody.innerHTML = items.map(it => {
+    const hasCount = it.countedQty !== null && it.countedQty !== undefined;
+    const diff = hasCount ? formatQty(it.countedQty - it.systemQty) : null;
+    const diffText = diff === null ? '' : (diff > 0 ? `+${diff}` : `${diff}`);
+    const diffColor = diff === null ? '' : (diff === 0 ? 'var(--color-success)' : 'var(--color-danger)');
+    return `
+    <tr data-id="${it.id}">
+      <td>${escapeHTML(it.itemCode)}</td>
+      <td>${escapeHTML(it.itemName)}</td>
+      <td>${it.customer ? escapeHTML(it.customer) : '-'}</td>
+      <td>${formatQty(it.systemQty)}</td>
+      <td><input type="text" class="stocktake-field-input" data-field="countedQty" value="${hasCount ? it.countedQty : ''}" placeholder="盤點數量" style="padding:5px 7px; width:90px;" /></td>
+      <td style="color:${diffColor};">${diffText}</td>
+      <td><input type="text" class="stocktake-field-input" data-field="remark" value="${it.remark ? escapeHTML(it.remark) : ''}" placeholder="差異原因" style="padding:5px 7px; width:140px;" /></td>
+    </tr>
+  `;
+  }).join('');
+}
+
+stocktakeTableBody.addEventListener('change', async e => {
+  if (!e.target.classList.contains('stocktake-field-input')) return;
+  const row = e.target.closest('tr');
+  const id = row.dataset.id;
+  const field = e.target.dataset.field;
+  let value = e.target.value.trim();
+  if (field === 'countedQty') value = value === '' ? null : (Number(value) || 0);
+  try {
+    await updateStocktakeItem(id, { [field]: value });
+  } catch (err) {
+    alert('儲存失敗：' + err.message);
+  }
+});
+
+stocktakeSessionSelect.addEventListener('change', () => {
+  switchStocktakeSession(stocktakeSessionSelect.value || null);
+});
+
+stocktakeCreateBtn.addEventListener('click', async () => {
+  const warehouse = stocktakeNewWarehouse.value;
+  const items = buildStocktakeItems(warehouse);
+  if (!items.length) {
+    stocktakeCreateMsg.textContent = `${warehouse}目前沒有庫存/寄庫品項，沒有東西可以盤點`;
+    return;
+  }
+  if (!confirm(`確定要產生「${warehouse}」的盤點表嗎？會把目前的 ${items.length} 筆品項連同系統數量鎖定存起來。`)) return;
+  stocktakeCreateBtn.disabled = true;
+  stocktakeCreateMsg.textContent = '產生中...';
+  try {
+    const result = await createStocktakeSession(warehouse, items);
+    stocktakeCreateMsg.textContent = `已產生「${warehouse}」盤點表，共 ${items.length} 筆品項。`;
+    switchStocktakeSession(result.sessionId);
+  } catch (err) {
+    stocktakeCreateMsg.textContent = '產生失敗：' + err.message;
+  } finally {
+    stocktakeCreateBtn.disabled = false;
+  }
+});
+
+stocktakeDeleteBtn.addEventListener('click', async () => {
+  if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
+  if (!confirm('確定要刪除這份盤點嗎？裡面已經輸入的盤點數量也會一起刪掉，沒辦法復原。')) return;
+  try {
+    await deleteStocktakeSession(selectedStocktakeSessionId);
+  } catch (err) {
+    alert('刪除失敗：' + err.message);
+  }
+});
+
+stocktakePrintBtn.addEventListener('click', () => {
+  if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
+  const session = currentStocktakeSessions.find(s => s.id === selectedStocktakeSessionId);
+  const items = [...currentStocktakeItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  stocktakePrintTitle.textContent = session
+    ? `${session.warehouse} 盤點表（${new Date(session.createdAt).toLocaleDateString('zh-TW')}）`
+    : '盤點表';
+  stocktakePrintTableBody.innerHTML = items.map(it => `
+    <tr>
+      <td>${escapeHTML(it.itemCode)}</td>
+      <td>${escapeHTML(it.itemName)}</td>
+      <td>${it.customer ? escapeHTML(it.customer) : ''}</td>
+      <td></td>
+    </tr>
+  `).join('');
+  window.print();
 });
 
 // ---------- 使用者管理 ----------

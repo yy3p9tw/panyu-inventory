@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=42" />
+  <link rel="stylesheet" href="style.css?v=43" />
 </head>
 <body>
   <header class="site-header">
@@ -42,6 +42,7 @@
         <button type="button" class="tab-btn" data-tab="expiring">快到期</button>
         <button type="button" class="tab-btn" data-tab="consignment">寄庫</button>
         <button type="button" class="tab-btn" data-tab="lockedStock">鎖庫</button>
+        <button type="button" class="tab-btn" data-tab="stocktake">盤點</button>
         <button type="button" class="tab-btn" data-tab="import">匯入資料</button>
         <button type="button" class="tab-btn" data-tab="history">歷史</button>
         <button type="button" class="tab-btn" data-tab="users">使用者管理</button>
@@ -286,6 +287,56 @@
       </section>
 
 
+      <!-- 盤點：產生盤點表(品號/品名/客戶，不顯示系統數量)帶去倉庫手寫，盤完回來輸入數字看盤差表 -->
+      <section id="tabStocktake" class="tab-panel" style="display:none;">
+        <div class="panel">
+          <h2>盤點</h2>
+          <p class="hint-text">品項範圍＝這個倉庫自己的庫存 + 寄庫裡分配到這個倉庫的客戶品項（寄庫貨通常還是實際放在倉庫裡，盤點要一起算）。「產生盤點表」當下會把品項清單連同系統數量鎖定存起來，之後庫存再變動也不會影響這份盤點。</p>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; padding:12px; background:var(--color-bg-subtle, #f9fafb); border-radius:8px;">
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px;">
+              倉庫
+              <select id="stocktakeNewWarehouse" style="padding:6px 8px;">
+                <option value="泰山">泰山</option>
+                <option value="台中">台中</option>
+              </select>
+            </label>
+            <button type="button" id="stocktakeCreateBtn">產生盤點表</button>
+            <p class="hint-text" id="stocktakeCreateMsg"></p>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+            <label style="display:flex; flex-direction:column; font-size:12px; color:#6b7280; gap:2px; flex:1; min-width:240px;">
+              選擇盤點
+              <select id="stocktakeSessionSelect" style="padding:6px 8px;"></select>
+            </label>
+            <button type="button" id="stocktakePrintBtn">列印空白表單</button>
+            <button type="button" id="stocktakeDeleteBtn" style="background:var(--color-danger); color:#fff;">刪除這份盤點</button>
+          </div>
+
+          <p class="hint-text" id="stocktakeCount"></p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>品號</th><th>品名</th><th>客戶</th><th>系統數量</th><th>盤點數量</th><th>差異</th><th>備註（差異原因）</th></tr>
+              </thead>
+              <tbody id="stocktakeTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 盤點空白表單：只在列印時顯示，平常用style.css的.print-only隱藏起來 -->
+      <div id="stocktakePrintSheet" class="print-only">
+        <h2 id="stocktakePrintTitle"></h2>
+        <table class="data-table">
+          <thead>
+            <tr><th>品號</th><th>品名</th><th>客戶</th><th>盤點數量</th></tr>
+          </thead>
+          <tbody id="stocktakePrintTableBody"></tbody>
+        </table>
+      </div>
+
       <!-- 匯入資料 -->
       <section id="tabImport" class="tab-panel" style="display:none;">
         <div class="panel">
@@ -379,6 +430,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=60"></script>
+  <script type="module" src="app.js?v=61"></script>
 </body>
 </html>
