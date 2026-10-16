@@ -1,8 +1,8 @@
 // 倉管前台：純唯讀展示頁，不用登入。跟後台管理系統（index.html）共用同一批 Firestore collection，
 // 只是這裡完全不能編輯。資料每天匯入一次，開頁面讀一次就好，不用即時監聽（見 loadAllData）。
 import {
-  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, fetchCollectionOnce, wireHistoryQuery, formatQty, parseBatchExpiryDate
-} from './front-common.js?v=39';
+  escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, fetchCollectionOnce, subscribeLastUpdate, wireHistoryQuery, formatQty, parseBatchExpiryDate
+} from './front-common.js?v=40';
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -422,3 +422,7 @@ async function loadAllData() {
 
 refreshBtn.addEventListener('click', loadAllData);
 loadAllData();
+
+// 後台更新完資料會touch meta/lastUpdate，這裡自動偵測到就重新讀一次，
+// 不用倉管自己記得按「重新整理」
+subscribeLastUpdate(() => loadAllData());

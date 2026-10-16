@@ -492,3 +492,10 @@ export async function deleteStocktakeSession(sessionId) {
   }
   return { deleted: refs.length };
 }
+
+// 前台頁面只有一個文件在監聽（見 front-common.js 的 subscribeLastUpdate），用來知道「後台資料
+// 有更新」要自動重新整理，不用整個collection開著即時監聽（那樣背景重連很花讀取量，見2026-10-16的
+// 額度超標事件）。後台每次匯入/手動編輯資料後呼叫這個，前台偵測到時間變了才觸發一次完整重讀。
+export async function touchLastUpdate() {
+  await setDoc(doc(db, 'meta', 'lastUpdate'), { updatedAt: Date.now() });
+}

@@ -1,6 +1,6 @@
 // 前台展示頁共用的小工具：純讀取、不需要登入。
 import { db } from './firebase-config.js?v=34';
-import { collection, doc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 export function escapeHTML(str) {
   const div = document.createElement('div');
@@ -84,6 +84,22 @@ export async function fetchCollectionOnce(name) {
     console.error(`讀取 ${name} 失敗`, err);
     return [];
   }
+}
+
+// 後台每次匯入/編輯資料後會更新 meta/lastUpdate 這一份文件（見 inventory-service.js 的
+// touchLastUpdate）。前台只即時監聽這一份文件（成本是1筆，不是整個collection），時間變了
+// 就代表後台有更新，呼叫傳進來的 onChange 觸發一次 fetchCollectionOnce 全部重讀。
+// 第一次訂閱時的初始值不算「變了」，只是記錄基準點，不會觸發 onChange。
+export function subscribeLastUpdate(onChange) {
+  let first = true;
+  return onSnapshot(
+    doc(db, 'meta', 'lastUpdate'),
+    snap => {
+      if (first) { first = false; return; }
+      onChange(snap.exists() ? snap.data().updatedAt : null);
+    },
+    err => console.error('讀取更新時間失敗', err)
+  );
 }
 
 // 歷史：跟後台「今天完成」存的快照是同一份 dailySnapshots collection，一個日期一種資料類型各自一份文件。

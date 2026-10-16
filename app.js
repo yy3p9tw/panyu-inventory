@@ -18,8 +18,9 @@ import {
   subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData,
-  subscribeToStocktakeSessions, subscribeToStocktakeItems, createStocktakeSession, updateStocktakeItem, deleteStocktakeSession
-} from './inventory-service.js?v=40';
+  subscribeToStocktakeSessions, subscribeToStocktakeItems, createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
+  touchLastUpdate
+} from './inventory-service.js?v=41';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -776,6 +777,7 @@ referenceTableBody.addEventListener('change', async e => {
   const value = e.target.value.trim();
   try {
     await setItemReferenceField(itemCode, field, value);
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
@@ -1099,6 +1101,7 @@ consignLedgerAddBtn.addEventListener('click', async () => {
     await addConsignmentLedgerEntry({ ...consignLedgerSelection, date, deltaQty, remark });
     consignLedgerNewQty.value = '';
     consignLedgerNewRemark.value = '';
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
@@ -1111,6 +1114,7 @@ consignLedgerTableBody.addEventListener('click', async e => {
   if (!confirm('確定要刪除這筆紀錄嗎？')) return;
   try {
     await deleteConsignmentLedgerEntry(id);
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -1165,6 +1169,7 @@ lockedStockTableBody.addEventListener('change', async e => {
   if (field === 'lockedQty') value = Number(value) || 0;
   try {
     await updateLockedStock(id, { [field]: value });
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
@@ -1177,6 +1182,7 @@ lockedStockTableBody.addEventListener('click', async e => {
   if (!confirm('確定要刪除這筆鎖庫紀錄嗎？')) return;
   try {
     await deleteLockedStock(id);
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -1204,6 +1210,7 @@ lockedStockAddBtn.addEventListener('click', async () => {
     lockedStockNewTag.value = '';
     lockedStockNewQty.value = '';
     lockedStockNewRemark.value = '';
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
@@ -1333,6 +1340,7 @@ stocktakeCreateBtn.addEventListener('click', async () => {
     const result = await createStocktakeSession(warehouse, items);
     stocktakeCreateMsg.textContent = `已產生「${warehouse}」盤點表，共 ${items.length} 筆品項。`;
     switchStocktakeSession(result.sessionId);
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     stocktakeCreateMsg.textContent = '產生失敗：' + err.message;
   } finally {
@@ -1345,6 +1353,7 @@ stocktakeDeleteBtn.addEventListener('click', async () => {
   if (!confirm('確定要刪除這份盤點嗎？裡面已經輸入的盤點數量也會一起刪掉，沒辦法復原。')) return;
   try {
     await deleteStocktakeSession(selectedStocktakeSessionId);
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -2138,6 +2147,7 @@ async function runImportItem(item) {
     importMsg.style.color = 'var(--color-success)';
     importMsg.textContent = message;
     btn.textContent = '已匯入 ✓';
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     importMsg.style.color = 'var(--color-danger)';
     importMsg.textContent = `「${item.label}」匯入失敗：` + err.message;
@@ -2226,6 +2236,7 @@ clearDailyBtn.addEventListener('click', async () => {
   try {
     const result = await clearDailyErpData();
     clearDailyMsg.textContent = `已清空：庫存 ${result.stock} 筆、廠務用料 ${result.factoryMaterial} 筆、批號 ${result.batchList} 筆、未核完調整 ${result.pendingAdjustments} 筆。`;
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     clearDailyMsg.textContent = '清空失敗：' + err.message;
   } finally {
