@@ -3,6 +3,7 @@
 import {
   escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, fetchCollectionOnce, subscribeLastUpdate, wireHistoryQuery, formatQty, parseBatchExpiryDate
 } from './front-common.js?v=40';
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -26,6 +27,7 @@ const lockedStockTableBody = document.getElementById('lockedStockTableBody');
 
 const stocktakeSessionSelect = document.getElementById('stocktakeSessionSelect');
 const stocktakePrintBtn = document.getElementById('stocktakePrintBtn');
+const stocktakeExcelBtn = document.getElementById('stocktakeExcelBtn');
 const stocktakeCount = document.getElementById('stocktakeCount');
 const stocktakeTableBody = document.getElementById('stocktakeTableBody');
 const stocktakePrintTitle = document.getElementById('stocktakePrintTitle');
@@ -357,6 +359,22 @@ stocktakePrintBtn.addEventListener('click', () => {
     </tr>
   `).join('');
   window.print();
+});
+
+stocktakeExcelBtn.addEventListener('click', () => {
+  if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
+  const session = currentStocktakeSessions.find(s => s.id === selectedStocktakeSessionId);
+  const items = stocktakeItemsForSelectedSession();
+  const rows = [
+    ['品號', '品名', '客戶', '盤點數量'],
+    ...items.map(it => [it.itemCode, it.itemName, it.customer || '', ''])
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, '盤點表');
+  const dateLabel = session ? new Date(session.createdAt).toLocaleDateString('zh-TW').replace(/\//g, '-') : '';
+  const filename = session ? `${session.warehouse}盤點表_${dateLabel}.xlsx` : '盤點表.xlsx';
+  XLSX.writeFile(workbook, filename);
 });
 
 // ---------- 歷史 ----------
