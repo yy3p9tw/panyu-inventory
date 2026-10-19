@@ -27,12 +27,14 @@ function stockDocId(itemCode, warehouse) {
   return `${sanitizeIdPart(itemCode)}__${warehouse}`;
 }
 
-export function subscribeToStock(callback, onError) {
-  return onSnapshot(
-    stockCol,
-    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
-    onError
-  );
+// 後台之前每個 collection 都用即時監聽(onSnapshot)，但單一帳號自己開著頁面，手機/筆電
+// 背景重連一樣會整個collection重讀一次，一樣會把Firestore免費讀取額度衝爆（跟前台2026-10-16
+// 那次是同一個機制，不是只有前台有這個問題）。改成讀一次就好，見下面的 fetchCollectionOnce，
+// 搭配 app.js 的 loadScopedData()：登入時、角色改變時、自己寫入資料後、或偵測到 meta/lastUpdate
+// 變了（可能是別的分頁/裝置寫入的）才重讀一次，不再保持長連線。
+export async function fetchCollectionOnce(name) {
+  const snapshot = await getDocs(collection(db, name));
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 // 匯入用：整批覆蓋「這次匯入的倉庫」資料。
@@ -124,18 +126,6 @@ async function replaceWholeCollection(collectionName, docs, filterFn) {
   return { deleted: deletedCount, written: docs.length };
 }
 
-function subscribeToCollection(collectionName, callback, onError) {
-  return onSnapshot(
-    collection(db, collectionName),
-    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
-    onError
-  );
-}
-
-export function subscribeToFactoryMaterial(callback, onError) {
-  return subscribeToCollection('factoryMaterial', callback, onError);
-}
-
 // records: [{ itemCode, itemName, qty }] — 批號、最短效期是在畫面上跟 batchList（廠務）即時對出來的，不存在這裡
 export async function replaceFactoryMaterial(records) {
   const docs = records.map(r => ({
@@ -152,10 +142,6 @@ export async function replaceFactoryMaterial(records) {
 
 // ---------- 品項參照主檔（品名/產地/單位/採購/類別/大類/淨重/毛重/公司別/標記/散裝/註記）：
 // ERP 沒有這份資料，是人工維護的品項主檔，逐欄位編輯；也可以從組合檔的「參照(新)」分頁批次匯入當初始值 ----------
-
-export function subscribeToItemReference(callback, onError) {
-  return subscribeToCollection('itemReference', callback, onError);
-}
 
 // 表格裡單一欄位編輯，改一欄存一欄，不影響其他欄位
 export async function setItemReferenceField(itemCode, field, value) {
@@ -203,10 +189,6 @@ export async function addItemReferenceStubs(items) {
 
 // ---------- 批號：每次匯入完全覆蓋 ----------
 
-export function subscribeToBatchList(callback, onError) {
-  return subscribeToCollection('batchList', callback, onError);
-}
-
 // records: [{ itemCode, itemName, warehouse, batchNo, qty }]
 export async function replaceBatchList(records) {
   const docs = records.map((r, i) => ({
@@ -243,10 +225,6 @@ export async function clearDailyErpData() {
 
 // ---------- 寄庫：每次匯入完全覆蓋 ----------
 
-export function subscribeToConsignment(callback, onError) {
-  return subscribeToCollection('consignment', callback, onError);
-}
-
 // records: [{ itemCode, itemName, customer, qty }]
 export async function replaceConsignment(records) {
   const docs = records.map((r, i) => ({
@@ -266,10 +244,6 @@ export async function replaceConsignment(records) {
 // 對照過0805庫存YU的「寄庫」分頁，真實的做法是逐日記錄進出（一欄一天，正數=當天寄入、負數=當天出庫），
 // 目前數量是全部加總、寄庫日期是最近一筆的日期——這裡改成資料庫版本：每筆進出各自一筆帶日期的紀錄，
 // 不是一欄一天，畫面上即時加總算出目前數量跟最近日期。同一個客戶+品項+倉庫可以有很多筆，逐筆新增/刪除。
-
-export function subscribeToConsignmentLedger(callback, onError) {
-  return subscribeToCollection('consignmentLedger', callback, onError);
-}
 
 // entry: { customer, itemCode, itemName, warehouse, date('YYYY-MM-DD'), deltaQty(正=寄入/負=出庫), remark }
 export async function addConsignmentLedgerEntry(entry) {
@@ -303,10 +277,6 @@ export async function importConsignmentLedgerEntries(records) {
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------
 // 泰山/台中庫存數字只反映「已核完」的單據，這裡存的是還沒核完、需要另外加減回庫存數字的部分。
 
-export function subscribeToPendingAdjustments(callback, onError) {
-  return subscribeToCollection('pendingAdjustments', callback, onError);
-}
-
 // records: [{ itemCode, itemName, warehouse, deltaQty, source }]
 // sources：這次匯入來源涵蓋哪幾種（例如匯入「銷貨」時傳 ['銷貨']），只會覆蓋這些來源舊資料，
 // 不會動到其他來源檔案（異動/轉撥/...）之前匯入的部分——因為現在每種都是分開的檔案各自匯入。
@@ -328,10 +298,6 @@ export async function replacePendingAdjustments(records, sources) {
 }
 
 // ---------- 彙總（會計角色用）：每次匯入完全覆蓋 ----------
-
-export function subscribeToSummary(callback, onError) {
-  return subscribeToCollection('summary', callback, onError);
-}
 
 // records: [{ itemCode, itemName, taishanQty, taichungQty, totalQty, unitWeight, totalWeight,
 //             purchaseType, category, majorCategory, origin, vendors: [{ label, qty, weight }] }]
@@ -361,10 +327,6 @@ export async function replaceSummary(records) {
 // 同一個品項可以同時有好幾筆鎖庫紀錄（例如同一品項一部分鎖給不同客戶/廠務），
 // 所以不是「品號+倉庫」對一筆，而是每筆自己一個文件（用 Firestore 自動 ID），
 // 可以隨時新增/編輯/刪除單一筆，不是整批匯入覆蓋。
-
-export function subscribeToLockedStock(callback, onError) {
-  return subscribeToCollection('lockedStock', callback, onError);
-}
 
 // record: { itemCode, itemName, warehouse, tag, lockedQty, remark }
 // warehouse：泰山或台中，決定這筆鎖庫算在哪個倉庫的庫存標籤上
@@ -435,18 +397,6 @@ export async function deleteOldSnapshots(cutoffDate) {
 // 盤點表要帶去倉庫手寫，盤完才回來打進系統，所以品項清單是「產生盤點表」當下就鎖定快照（連同系統數量），
 // 不是即時跟著庫存變動——不然盤點期間如果又匯入新的一天資料，表單對不上，使用者會搞混。
 
-export function subscribeToStocktakeSessions(callback, onError) {
-  return subscribeToCollection('stocktakeSessions', callback, onError);
-}
-
-export function subscribeToStocktakeItems(sessionId, callback, onError) {
-  return onSnapshot(
-    query(collection(db, 'stocktakeItems'), where('sessionId', '==', sessionId)),
-    snapshot => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))),
-    onError
-  );
-}
-
 // items: [{ itemCode, itemName, customer(寄庫品項才有，一般庫存是''), systemQty }]
 // 系統數量在產生當下就鎖定存起來，盤點數量(countedQty)留null等使用者之後填，備註(remark)是差異原因
 export async function createStocktakeSession(warehouse, items) {
@@ -498,4 +448,19 @@ export async function deleteStocktakeSession(sessionId) {
 // 額度超標事件）。後台每次匯入/手動編輯資料後呼叫這個，前台偵測到時間變了才觸發一次完整重讀。
 export async function touchLastUpdate() {
   await setDoc(doc(db, 'meta', 'lastUpdate'), { updatedAt: Date.now() });
+}
+
+// 後台自己寫入資料時會直接重新載入（見 app.js 的 loadScopedData），這個監聽是給「同一個帳號
+// 同時開好幾個分頁/裝置」這種情況用的保險——別的分頁寫入後，這裡偵測到時間變了就跟著重讀一次。
+// 只監聽這一份文件（成本1筆），不是整個collection。
+export function subscribeToLastUpdate(onChange) {
+  let first = true;
+  return onSnapshot(
+    doc(db, 'meta', 'lastUpdate'),
+    snap => {
+      if (first) { first = false; return; }
+      onChange(snap.exists() ? snap.data().updatedAt : null);
+    },
+    err => console.error('讀取更新時間失敗', err)
+  );
 }

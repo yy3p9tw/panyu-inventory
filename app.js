@@ -7,20 +7,20 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  subscribeToStock, replaceStockForWarehouses,
-  subscribeToFactoryMaterial, replaceFactoryMaterial,
-  subscribeToItemReference, setItemReferenceField, importItemReferenceFromMaster, addItemReferenceStubs,
-  subscribeToSummary, replaceSummary,
-  subscribeToBatchList, replaceBatchList,
-  subscribeToConsignment, replaceConsignment,
-  subscribeToConsignmentLedger, addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
-  subscribeToPendingAdjustments, replacePendingAdjustments,
-  subscribeToLockedStock, addLockedStock, updateLockedStock, deleteLockedStock,
+  fetchCollectionOnce, replaceStockForWarehouses,
+  replaceFactoryMaterial,
+  setItemReferenceField, importItemReferenceFromMaster, addItemReferenceStubs,
+  replaceSummary,
+  replaceBatchList,
+  replaceConsignment,
+  addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
+  replacePendingAdjustments,
+  addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData,
-  subscribeToStocktakeSessions, subscribeToStocktakeItems, createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
-  touchLastUpdate
-} from './inventory-service.js?v=41';
+  createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
+  touchLastUpdate, subscribeToLastUpdate
+} from './inventory-service.js?v=42';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -33,6 +33,8 @@ const loginError = document.getElementById('loginError');
 const userNav = document.getElementById('userNav');
 const currentUserEmail = document.getElementById('currentUserEmail');
 const logoutBtn = document.getElementById('logoutBtn');
+const refreshBtn = document.getElementById('refreshBtn');
+const refreshStatus = document.getElementById('refreshStatus');
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
 const taishanTableBody = document.getElementById('taishanTableBody');
@@ -146,19 +148,11 @@ let currentConsignmentLedger = [];
 let currentStocktakeSessions = [];
 let currentStocktakeItems = [];
 let selectedStocktakeSessionId = null;
-let unsubscribeStock = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
-let unsubscribeFactoryMaterial = null;
-let unsubscribeItemReference = null;
-let unsubscribeSummary = null;
-let unsubscribeBatchList = null;
-let unsubscribeConsignment = null;
-let unsubscribePendingAdjustments = null;
-let unsubscribeLockedStock = null;
-let unsubscribeConsignmentLedger = null;
-let unsubscribeStocktakeSessions = null;
-let unsubscribeStocktakeItems = null;
+// 角色簽章：記錄上次真的載入過資料時的角色組合，profile監聽背景重連時角色沒變就不用整批重讀
+// （見 loadScopedData 呼叫處），避免後台自己開著頁面也被重連機制榨乾讀取額度。
+let currentRolesSignature = null;
 
 // ---------- 登入 ----------
 
@@ -179,6 +173,16 @@ loginBtn.addEventListener('click', async () => {
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
+refreshBtn.addEventListener('click', loadScopedData);
+
+// 同一個帳號在別的分頁/裝置寫入資料時的保險：偵測到 meta/lastUpdate 變了就跟著重讀一次，
+// 只監聽這一份文件（成本1筆），不是整個collection。登出時不用特別取消，meta是公開讀取、
+// 跟帳號無關，而且 loadScopedData 本身在沒登入時不會做任何事（visibleWarehouses等都是空的，
+// 畫面也沒顯示，重讀幾個空集合成本可忽略）。
+subscribeToLastUpdate(() => {
+  if (currentUid) loadScopedData();
+});
+
 function describeAuthError(err) {
   const map = {
     'auth/invalid-email': 'Email 格式不正確',
@@ -194,19 +198,9 @@ onAuthStateChanged(auth, async user => {
   // 換帳號（不一定會先登出，例如上一個帳號的登入還留在瀏覽器裡）時，
   // 一定要先把舊帳號的訂閱全部關掉，不然畫面會殘留舊帳號的角色權限。
   if (unsubscribeOwnProfile) { unsubscribeOwnProfile(); unsubscribeOwnProfile = null; }
-  if (unsubscribeStock) { unsubscribeStock(); unsubscribeStock = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
-  if (unsubscribeFactoryMaterial) { unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null; }
-  if (unsubscribeItemReference) { unsubscribeItemReference(); unsubscribeItemReference = null; }
-  if (unsubscribeSummary) { unsubscribeSummary(); unsubscribeSummary = null; }
-  if (unsubscribeBatchList) { unsubscribeBatchList(); unsubscribeBatchList = null; }
-  if (unsubscribeConsignment) { unsubscribeConsignment(); unsubscribeConsignment = null; }
-  if (unsubscribePendingAdjustments) { unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null; }
-  if (unsubscribeLockedStock) { unsubscribeLockedStock(); unsubscribeLockedStock = null; }
-  if (unsubscribeConsignmentLedger) { unsubscribeConsignmentLedger(); unsubscribeConsignmentLedger = null; }
-  if (unsubscribeStocktakeSessions) { unsubscribeStocktakeSessions(); unsubscribeStocktakeSessions = null; }
-  if (unsubscribeStocktakeItems) { unsubscribeStocktakeItems(); unsubscribeStocktakeItems = null; }
   currentRoles = [];
+  currentRolesSignature = null;
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
@@ -232,24 +226,16 @@ onAuthStateChanged(auth, async user => {
     await touchOwnProfile(user.uid, user.email);
 
     unsubscribeOwnProfile = subscribeToOwnProfile(user.uid, profile => {
-      currentRoles = profile.roles || [];
+      const roles = profile.roles || [];
+      currentRoles = roles;
       applyRoleVisibility();
-    });
-
-    unsubscribeStock = subscribeToStock(
-      stock => {
-        currentStock = stock;
-        renderTaishanTable();
-        renderTaichungTable();
-        renderAvailableMaterialTable();
-      },
-      err => {
-        taishanSummary.style.color = 'var(--color-danger)';
-        taishanSummary.textContent = '讀取庫存資料失敗：' + err.message;
-        taichungSummary.style.color = 'var(--color-danger)';
-        taichungSummary.textContent = '讀取庫存資料失敗：' + err.message;
+      // 角色組合真的變了（或第一次登入）才整批重讀，單純重連、角色沒變就跳過
+      const sig = [...roles].sort().join(',');
+      if (sig !== currentRolesSignature) {
+        currentRolesSignature = sig;
+        loadScopedData();
       }
-    );
+    });
   } else {
     currentUid = null;
     loginBox.style.display = 'block';
@@ -318,107 +304,59 @@ function applyRoleVisibility() {
     unsubscribeUsers();
     unsubscribeUsers = null;
   }
+}
 
-  if (canSeeFactory && !unsubscribeFactoryMaterial) {
-    unsubscribeFactoryMaterial = subscribeToFactoryMaterial(rows => {
-      currentFactoryMaterial = rows;
-      renderFactoryMaterialTable();
-    });
-  } else if (!canSeeFactory && unsubscribeFactoryMaterial) {
-    unsubscribeFactoryMaterial(); unsubscribeFactoryMaterial = null;
-    currentFactoryMaterial = [];
-  }
+// 資料改成讀一次就好，不用即時監聽（見 inventory-service.js 的 fetchCollectionOnce 註解——
+// 單一帳號自己開著頁面，手機/筆電背景重連一樣會把11個collection整個重讀一次，一樣會把免費
+// 讀取額度衝爆）。依目前角色能看到的範圍決定要讀哪些collection，登入/角色變了/自己寫入資料後/
+// 按重新整理/偵測到別的分頁有更新時呼叫這個，一次讀完重新渲染整個畫面。
+async function loadScopedData() {
+  if (refreshBtn) refreshBtn.disabled = true;
+  if (refreshStatus) refreshStatus.textContent = '讀取中...';
+  try {
+    const canSeeStock = visibleWarehouses.length > 0;
+    // 純泰山倉管（沒有廠務身分）也需要參照資料，才能套用「註記=隱/隱藏」的品項隱藏規則
+    const needsItemReference = canSeeFactory || currentRoles.includes('泰山倉管');
 
-  // 純泰山倉管（沒有廠務身分）也需要參照資料，才能套用「註記=隱/隱藏」的品項隱藏規則
-  const needsItemReference = canSeeFactory || currentRoles.includes('泰山倉管');
-  if (needsItemReference && !unsubscribeItemReference) {
-    unsubscribeItemReference = subscribeToItemReference(rows => {
-      currentItemReference = rows;
-      renderAvailableMaterialTable();
-      renderItemReferenceTable();
-      renderTaishanTable();
-    });
-  } else if (!needsItemReference && unsubscribeItemReference) {
-    unsubscribeItemReference(); unsubscribeItemReference = null;
-    currentItemReference = [];
-  }
+    const names = ['stock'];
+    if (canSeeFactory) names.push('factoryMaterial');
+    if (needsItemReference) names.push('itemReference');
+    if (canSeeSummary) names.push('summary');
+    if (canSeeStock || canSeeFactory) names.push('batchList', 'pendingAdjustments');
+    if (canSeeStock) names.push('consignment', 'lockedStock', 'consignmentLedger', 'stocktakeSessions', 'stocktakeItems');
 
-  if (canSeeSummary && !unsubscribeSummary) {
-    unsubscribeSummary = subscribeToSummary(rows => {
-      currentSummary = rows;
-      renderSummaryTable();
-    });
-  } else if (!canSeeSummary && unsubscribeSummary) {
-    unsubscribeSummary();
-    unsubscribeSummary = null;
-    currentSummary = [];
-  }
+    const results = await Promise.all(names.map(fetchCollectionOnce));
+    const data = Object.fromEntries(names.map((n, i) => [n, results[i]]));
 
-  // 批號資料廠務物料分頁也要用（廠務用料/可用原料(泰山)的批號、最短效期），
-  // 純廠務角色（沒有泰山/台中/管理員）canSeeStock 會是 false，所以這裡要跟 canSeeFactory 一起判斷
-  if ((canSeeStock || canSeeFactory) && !unsubscribeBatchList) {
-    unsubscribeBatchList = subscribeToBatchList(rows => {
-      currentBatchList = rows;
-      renderBatchTable();
-      renderExpiringTable();
-      renderTaishanTable();
-      renderTaichungTable();
-      renderFactoryMaterialTable();
-      renderAvailableMaterialTable();
-    });
-  } else if (!canSeeStock && !canSeeFactory && unsubscribeBatchList) {
-    unsubscribeBatchList(); unsubscribeBatchList = null;
-    currentBatchList = [];
-  }
+    currentStock = data.stock;
+    currentFactoryMaterial = canSeeFactory ? data.factoryMaterial : [];
+    currentItemReference = needsItemReference ? data.itemReference : [];
+    currentSummary = canSeeSummary ? data.summary : [];
+    currentBatchList = (canSeeStock || canSeeFactory) ? data.batchList : [];
+    currentPendingAdjustments = (canSeeStock || canSeeFactory) ? data.pendingAdjustments : [];
+    currentConsignment = canSeeStock ? data.consignment : [];
+    currentLockedStock = canSeeStock ? data.lockedStock : [];
+    currentConsignmentLedger = canSeeStock ? data.consignmentLedger : [];
+    currentStocktakeSessions = canSeeStock ? data.stocktakeSessions : [];
+    currentStocktakeItems = canSeeStock ? data.stocktakeItems : [];
 
-  if (canSeeStock && !unsubscribeConsignment) {
-    unsubscribeConsignment = subscribeToConsignment(rows => {
-      currentConsignment = rows;
-      renderConsignmentTable();
-    });
-    unsubscribeLockedStock = subscribeToLockedStock(rows => {
-      currentLockedStock = rows;
-      renderLockedStockTable();
-      renderTaishanTable();
-      renderTaichungTable();
-    });
-    unsubscribeConsignmentLedger = subscribeToConsignmentLedger(rows => {
-      currentConsignmentLedger = rows;
-      renderConsignmentTable();
-      renderConsignLedgerPanel();
-    });
-    unsubscribeStocktakeSessions = subscribeToStocktakeSessions(rows => {
-      currentStocktakeSessions = rows;
-      renderStocktakeSessionSelect();
-    });
-  } else if (!canSeeStock && unsubscribeConsignment) {
-    unsubscribeConsignment(); unsubscribeConsignment = null;
-    unsubscribeLockedStock(); unsubscribeLockedStock = null;
-    unsubscribeConsignmentLedger(); unsubscribeConsignmentLedger = null;
-    unsubscribeStocktakeSessions(); unsubscribeStocktakeSessions = null;
-    if (unsubscribeStocktakeItems) { unsubscribeStocktakeItems(); unsubscribeStocktakeItems = null; }
-    currentConsignment = [];
-    currentLockedStock = [];
-    currentConsignmentLedger = [];
-    currentStocktakeSessions = [];
-    currentStocktakeItems = [];
-    selectedStocktakeSessionId = null;
-  }
-
-  // 未核完調整廠務物料分頁也要用（可用原料(泰山)的顯示數字要加減未核完調整），
-  // 純廠務角色（沒有泰山/台中/管理員）canSeeStock 會是 false，所以這裡要跟 canSeeFactory 一起判斷
-  if ((canSeeStock || canSeeFactory) && !unsubscribePendingAdjustments) {
-    unsubscribePendingAdjustments = subscribeToPendingAdjustments(rows => {
-      currentPendingAdjustments = rows;
-      renderTaishanTable();
-      renderTaichungTable();
-      renderConsignmentTable();
-      renderFactoryMaterialTable();
-      renderAvailableMaterialTable();
-    });
-  } else if (!canSeeStock && !canSeeFactory && unsubscribePendingAdjustments) {
-    unsubscribePendingAdjustments(); unsubscribePendingAdjustments = null;
-    currentPendingAdjustments = [];
+    renderTaishanTable();
+    renderTaichungTable();
+    renderFactoryMaterialTable();
+    renderAvailableMaterialTable();
+    renderItemReferenceTable();
+    renderSummaryTable();
+    renderBatchTable();
+    renderExpiringTable();
+    renderConsignmentTable();
+    renderConsignLedgerPanel();
+    renderLockedStockTable();
+    renderStocktakeSessionSelect();
+    if (refreshStatus) refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  } catch (err) {
+    if (refreshStatus) refreshStatus.textContent = '讀取失敗：' + err.message;
+  } finally {
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
@@ -777,6 +715,13 @@ referenceTableBody.addEventListener('change', async e => {
   const value = e.target.value.trim();
   try {
     await setItemReferenceField(itemCode, field, value);
+    // 參照一次可能要改好幾十個品項的欄位，不整批重讀（太花讀取量），已經知道改了哪個品號
+    // 哪個欄位，直接改本地資料重新渲染就好
+    const item = currentItemReference.find(r => r.itemCode === itemCode);
+    if (item) item[field] = value;
+    renderAvailableMaterialTable();
+    renderItemReferenceTable();
+    renderTaishanTable();
     touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('儲存失敗：' + err.message);
@@ -1102,6 +1047,7 @@ consignLedgerAddBtn.addEventListener('click', async () => {
     consignLedgerNewQty.value = '';
     consignLedgerNewRemark.value = '';
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
@@ -1115,6 +1061,7 @@ consignLedgerTableBody.addEventListener('click', async e => {
   try {
     await deleteConsignmentLedgerEntry(id);
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -1169,6 +1116,13 @@ lockedStockTableBody.addEventListener('change', async e => {
   if (field === 'lockedQty') value = Number(value) || 0;
   try {
     await updateLockedStock(id, { [field]: value });
+    // 鎖庫一次可能要改好幾筆的欄位，不整批重讀（太花讀取量），已經知道改了哪一筆哪個欄位，
+    // 直接改本地資料重新渲染就好
+    const item = currentLockedStock.find(r => r.id === id);
+    if (item) item[field] = value;
+    renderLockedStockTable();
+    renderTaishanTable();
+    renderTaichungTable();
     touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('儲存失敗：' + err.message);
@@ -1183,6 +1137,7 @@ lockedStockTableBody.addEventListener('click', async e => {
   try {
     await deleteLockedStock(id);
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -1211,6 +1166,7 @@ lockedStockAddBtn.addEventListener('click', async () => {
     lockedStockNewQty.value = '';
     lockedStockNewRemark.value = '';
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
@@ -1252,34 +1208,29 @@ function renderStocktakeSessionSelect() {
   const sorted = [...currentStocktakeSessions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   if (!sorted.length) {
     stocktakeSessionSelect.innerHTML = '<option value="">目前沒有盤點紀錄</option>';
-    switchStocktakeSession(null);
+    selectedStocktakeSessionId = null;
+    renderStocktakeTable();
     return;
   }
   const keepSelected = sorted.some(s => s.id === selectedStocktakeSessionId);
   stocktakeSessionSelect.innerHTML = sorted.map(s =>
     `<option value="${s.id}">${escapeHTML(s.warehouse)} - ${new Date(s.createdAt).toLocaleString('zh-TW')}（${s.itemCount}筆）</option>`
   ).join('');
-  const nextId = keepSelected ? selectedStocktakeSessionId : sorted[0].id;
-  stocktakeSessionSelect.value = nextId;
-  if (nextId !== selectedStocktakeSessionId) switchStocktakeSession(nextId);
+  selectedStocktakeSessionId = keepSelected ? selectedStocktakeSessionId : sorted[0].id;
+  stocktakeSessionSelect.value = selectedStocktakeSessionId;
+  renderStocktakeTable();
 }
 
-function switchStocktakeSession(sessionId) {
-  if (unsubscribeStocktakeItems) { unsubscribeStocktakeItems(); unsubscribeStocktakeItems = null; }
-  selectedStocktakeSessionId = sessionId;
-  currentStocktakeItems = [];
-  if (!sessionId) {
-    renderStocktakeTable();
-    return;
-  }
-  unsubscribeStocktakeItems = subscribeToStocktakeItems(sessionId, rows => {
-    currentStocktakeItems = rows;
-    renderStocktakeTable();
-  });
+// stocktakeItems 現在是一次把整個collection讀回來（見 loadScopedData），不是只讀選中那份盤點的，
+// 畫面上要自己篩出目前選的這份
+function stocktakeItemsForSelectedSession() {
+  return currentStocktakeItems
+    .filter(it => it.sessionId === selectedStocktakeSessionId)
+    .sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 }
 
 function renderStocktakeTable() {
-  const items = [...currentStocktakeItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  const items = stocktakeItemsForSelectedSession();
   stocktakeCount.textContent = selectedStocktakeSessionId
     ? `共 ${items.length} 筆`
     : '請先產生盤點表，或從上面選一份已經存在的盤點';
@@ -1317,13 +1268,20 @@ stocktakeTableBody.addEventListener('change', async e => {
   if (field === 'countedQty') value = value === '' ? null : (Number(value) || 0);
   try {
     await updateStocktakeItem(id, { [field]: value });
+    // 盤點一次可能要改好幾十筆，不整批重讀（太花讀取量），已經知道改了哪一筆哪個欄位，
+    // 直接改本地資料重新渲染就好
+    const item = currentStocktakeItems.find(it => it.id === id);
+    if (item) item[field] = value;
+    renderStocktakeTable();
+    touchLastUpdate().catch(() => {});
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
 });
 
 stocktakeSessionSelect.addEventListener('change', () => {
-  switchStocktakeSession(stocktakeSessionSelect.value || null);
+  selectedStocktakeSessionId = stocktakeSessionSelect.value || null;
+  renderStocktakeTable();
 });
 
 stocktakeCreateBtn.addEventListener('click', async () => {
@@ -1339,8 +1297,13 @@ stocktakeCreateBtn.addEventListener('click', async () => {
   try {
     const result = await createStocktakeSession(warehouse, items);
     stocktakeCreateMsg.textContent = `已產生「${warehouse}」盤點表，共 ${items.length} 筆品項。`;
-    switchStocktakeSession(result.sessionId);
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
+    // loadScopedData 重讀後 renderStocktakeSessionSelect 如果舊選的那份盤點還在，會保留原本選項，
+    // 這裡強制切到剛剛新產生的這份
+    selectedStocktakeSessionId = result.sessionId;
+    stocktakeSessionSelect.value = result.sessionId;
+    renderStocktakeTable();
   } catch (err) {
     stocktakeCreateMsg.textContent = '產生失敗：' + err.message;
   } finally {
@@ -1354,6 +1317,7 @@ stocktakeDeleteBtn.addEventListener('click', async () => {
   try {
     await deleteStocktakeSession(selectedStocktakeSessionId);
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -1362,7 +1326,7 @@ stocktakeDeleteBtn.addEventListener('click', async () => {
 stocktakePrintBtn.addEventListener('click', () => {
   if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
   const session = currentStocktakeSessions.find(s => s.id === selectedStocktakeSessionId);
-  const items = [...currentStocktakeItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+  const items = stocktakeItemsForSelectedSession();
   stocktakePrintTitle.textContent = session
     ? `${session.warehouse} 盤點表（${new Date(session.createdAt).toLocaleDateString('zh-TW')}）`
     : '盤點表';
@@ -2148,6 +2112,7 @@ async function runImportItem(item) {
     importMsg.textContent = message;
     btn.textContent = '已匯入 ✓';
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     importMsg.style.color = 'var(--color-danger)';
     importMsg.textContent = `「${item.label}」匯入失敗：` + err.message;
@@ -2237,6 +2202,7 @@ clearDailyBtn.addEventListener('click', async () => {
     const result = await clearDailyErpData();
     clearDailyMsg.textContent = `已清空：庫存 ${result.stock} 筆、廠務用料 ${result.factoryMaterial} 筆、批號 ${result.batchList} 筆、未核完調整 ${result.pendingAdjustments} 筆。`;
     touchLastUpdate().catch(() => {});
+    await loadScopedData();
   } catch (err) {
     clearDailyMsg.textContent = '清空失敗：' + err.message;
   } finally {
