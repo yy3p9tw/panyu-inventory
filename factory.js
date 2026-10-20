@@ -122,8 +122,20 @@ function renderAvailableMaterialTable() {
     adjustmentByCode.set(a.itemCode, (adjustmentByCode.get(a.itemCode) || 0) + (a.deltaQty || 0));
   });
 
-  let taishanStock = currentStock.filter(s =>
-    s.warehouse === '泰山' &&
+  // 有些品項只存在未核完調整裡（例如轉撥單還沒核准，泰山的庫存.xlsx還沒出現這個品號），
+  // 把庫存跟未核完調整的品號做聯集才不會漏掉，跟泰山分頁同一套邏輯
+  const taishanItemCodes = new Set(
+    currentStock.filter(s => s.warehouse === '泰山').map(s => s.itemCode)
+  );
+  const adjustmentOnlyRows = [];
+  adjustmentByCode.forEach((_, itemCode) => {
+    if (taishanItemCodes.has(itemCode)) return;
+    const itemName = currentPendingAdjustments.find(a => a.warehouse === '泰山' && a.itemCode === itemCode && a.itemName)?.itemName || '';
+    adjustmentOnlyRows.push({ itemCode, itemName, warehouse: '泰山', qty: 0 });
+  });
+  const allTaishanRows = [...currentStock.filter(s => s.warehouse === '泰山'), ...adjustmentOnlyRows];
+
+  let taishanStock = allTaishanRows.filter(s =>
     tagByCode.get(s.itemCode) &&
     formatQty(s.qty + (adjustmentByCode.get(s.itemCode) || 0)) !== 0
   );
