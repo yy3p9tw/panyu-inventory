@@ -445,9 +445,14 @@ export async function deleteStocktakeSession(sessionId) {
 
 // 前台頁面只有一個文件在監聽（見 front-common.js 的 subscribeLastUpdate），用來知道「後台資料
 // 有更新」要自動重新整理，不用整個collection開著即時監聽（那樣背景重連很花讀取量，見2026-10-16的
-// 額度超標事件）。後台每次匯入/手動編輯資料後呼叫這個，前台偵測到時間變了才觸發一次完整重讀。
-export async function touchLastUpdate() {
-  await setDoc(doc(db, 'meta', 'lastUpdate'), { updatedAt: Date.now() });
+// 額度超標事件）。
+// 重要：只在「整批」動作呼叫這個（匯入ERP檔、新增/刪除一整筆鎖庫/寄庫紀錄、建立/刪除整份盤點），
+// 不要在逐欄位編輯（鎖庫/參照/盤點數量這種一次改很多欄位的場景）呼叫——每呼叫一次，所有開著
+// 前台/後台頁面的裝置都會整批重讀一次，逐欄位編輯等於每改一欄就觸發全體連鎖重讀，2026-10-19
+// 曾經因為這樣一天衝到49萬次讀取，比修之前的即時監聽還糟。
+export async function touchLastUpdate(ts = Date.now()) {
+  await setDoc(doc(db, 'meta', 'lastUpdate'), { updatedAt: ts });
+  return ts;
 }
 
 // 後台自己寫入資料時會直接重新載入（見 app.js 的 loadScopedData），這個監聽是給「同一個帳號

@@ -20,7 +20,7 @@ import {
   clearDailyErpData,
   createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
   touchLastUpdate, subscribeToLastUpdate
-} from './inventory-service.js?v=42';
+} from './inventory-service.js?v=43';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -158,6 +158,10 @@ let unsubscribeUsers = null;
 // 角色簽章：記錄上次真的載入過資料時的角色組合，profile監聽背景重連時角色沒變就不用整批重讀
 // （見 loadScopedData 呼叫處），避免後台自己開著頁面也被重連機制榨乾讀取額度。
 let currentRolesSignature = null;
+// 自己剛寫入的時間戳記：touchLastUpdate的監聽會連自己這個分頁的寫入都收到（Firestore本地回音），
+// 記住自己剛寫的時間戳，監聽收到同一個值就跳過，不然每次「整批」寫入都會被自己的監聽再觸發
+// 一次loadScopedData，平白多讀一次。
+let lastSelfTouchTimestamp = null;
 
 // ---------- 登入 ----------
 
@@ -184,9 +188,17 @@ refreshBtn.addEventListener('click', loadScopedData);
 // 只監聽這一份文件（成本1筆），不是整個collection。登出時不用特別取消，meta是公開讀取、
 // 跟帳號無關，而且 loadScopedData 本身在沒登入時不會做任何事（visibleWarehouses等都是空的，
 // 畫面也沒顯示，重讀幾個空集合成本可忽略）。
-subscribeToLastUpdate(() => {
-  if (currentUid) loadScopedData();
+subscribeToLastUpdate(updatedAt => {
+  if (currentUid && updatedAt !== lastSelfTouchTimestamp) loadScopedData();
 });
+
+// 「整批」動作（匯入、新增/刪除一整筆鎖庫/寄庫紀錄、建立/刪除整份盤點）成功後呼叫這個，
+// 通知別的分頁/裝置該重讀了；逐欄位編輯不要呼叫（見inventory-service.js的touchLastUpdate註解）
+function touchLastUpdateSelf() {
+  const ts = Date.now();
+  lastSelfTouchTimestamp = ts;
+  touchLastUpdate(ts).catch(() => {});
+}
 
 function describeAuthError(err) {
   const map = {
@@ -739,7 +751,8 @@ referenceTableBody.addEventListener('change', async e => {
     renderAvailableMaterialTable();
     renderItemReferenceTable();
     renderTaishanTable();
-    touchLastUpdate().catch(() => {});
+    // 逐欄位編輯不touch meta/lastUpdate——每改一欄就觸發全體裝置連鎖重讀，太花讀取量
+    // （見inventory-service.js的touchLastUpdate註解）
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
@@ -1063,7 +1076,7 @@ consignLedgerAddBtn.addEventListener('click', async () => {
     await addConsignmentLedgerEntry({ ...consignLedgerSelection, date, deltaQty, remark });
     consignLedgerNewQty.value = '';
     consignLedgerNewRemark.value = '';
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     alert('新增失敗：' + err.message);
@@ -1077,7 +1090,7 @@ consignLedgerTableBody.addEventListener('click', async e => {
   if (!confirm('確定要刪除這筆紀錄嗎？')) return;
   try {
     await deleteConsignmentLedgerEntry(id);
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     alert('刪除失敗：' + err.message);
@@ -1140,7 +1153,7 @@ lockedStockTableBody.addEventListener('change', async e => {
     renderLockedStockTable();
     renderTaishanTable();
     renderTaichungTable();
-    touchLastUpdate().catch(() => {});
+    // 逐欄位編輯不touch meta/lastUpdate——每改一欄就觸發全體裝置連鎖重讀，太花讀取量
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
@@ -1153,7 +1166,7 @@ lockedStockTableBody.addEventListener('click', async e => {
   if (!confirm('確定要刪除這筆鎖庫紀錄嗎？')) return;
   try {
     await deleteLockedStock(id);
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     alert('刪除失敗：' + err.message);
@@ -1182,7 +1195,7 @@ lockedStockAddBtn.addEventListener('click', async () => {
     lockedStockNewTag.value = '';
     lockedStockNewQty.value = '';
     lockedStockNewRemark.value = '';
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     alert('新增失敗：' + err.message);
@@ -1290,7 +1303,8 @@ stocktakeTableBody.addEventListener('change', async e => {
     const item = currentStocktakeItems.find(it => it.id === id);
     if (item) item[field] = value;
     renderStocktakeTable();
-    touchLastUpdate().catch(() => {});
+    // 逐欄位編輯不touch meta/lastUpdate——每改一欄就觸發全體裝置連鎖重讀，太花讀取量；
+    // 而且前台本來就只看空白表單，不顯示盤點數量，不需要即時通知前台
   } catch (err) {
     alert('儲存失敗：' + err.message);
   }
@@ -1314,7 +1328,7 @@ stocktakeCreateBtn.addEventListener('click', async () => {
   try {
     const result = await createStocktakeSession(warehouse, items);
     stocktakeCreateMsg.textContent = `已產生「${warehouse}」盤點表，共 ${items.length} 筆品項。`;
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
     // loadScopedData 重讀後 renderStocktakeSessionSelect 如果舊選的那份盤點還在，會保留原本選項，
     // 這裡強制切到剛剛新產生的這份
@@ -1333,7 +1347,7 @@ stocktakeDeleteBtn.addEventListener('click', async () => {
   if (!confirm('確定要刪除這份盤點嗎？裡面已經輸入的盤點數量也會一起刪掉，沒辦法復原。')) return;
   try {
     await deleteStocktakeSession(selectedStocktakeSessionId);
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     alert('刪除失敗：' + err.message);
@@ -2167,7 +2181,7 @@ async function runImportItem(item) {
     importMsg.style.color = 'var(--color-success)';
     importMsg.textContent = message;
     btn.textContent = '已匯入 ✓';
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     importMsg.style.color = 'var(--color-danger)';
@@ -2257,7 +2271,7 @@ clearDailyBtn.addEventListener('click', async () => {
   try {
     const result = await clearDailyErpData();
     clearDailyMsg.textContent = `已清空：庫存 ${result.stock} 筆、廠務用料 ${result.factoryMaterial} 筆、批號 ${result.batchList} 筆、未核完調整 ${result.pendingAdjustments} 筆。`;
-    touchLastUpdate().catch(() => {});
+    touchLastUpdateSelf();
     await loadScopedData();
   } catch (err) {
     clearDailyMsg.textContent = '清空失敗：' + err.message;
