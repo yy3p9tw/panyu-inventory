@@ -112,11 +112,16 @@ const stocktakeCreateBtn = document.getElementById('stocktakeCreateBtn');
 const stocktakeCreateMsg = document.getElementById('stocktakeCreateMsg');
 const stocktakeSessionSelect = document.getElementById('stocktakeSessionSelect');
 const stocktakePrintBtn = document.getElementById('stocktakePrintBtn');
+const stocktakeResultPrintBtn = document.getElementById('stocktakeResultPrintBtn');
 const stocktakeDeleteBtn = document.getElementById('stocktakeDeleteBtn');
 const stocktakeCount = document.getElementById('stocktakeCount');
 const stocktakeTableBody = document.getElementById('stocktakeTableBody');
+const stocktakePrintSheet = document.getElementById('stocktakePrintSheet');
 const stocktakePrintTitle = document.getElementById('stocktakePrintTitle');
 const stocktakePrintTableBody = document.getElementById('stocktakePrintTableBody');
+const stocktakeResultPrintSheet = document.getElementById('stocktakeResultPrintSheet');
+const stocktakeResultPrintTitle = document.getElementById('stocktakeResultPrintTitle');
+const stocktakeResultPrintTableBody = document.getElementById('stocktakeResultPrintTableBody');
 
 const WAREHOUSES = ['泰山', '台中'];
 const ROLES = ['泰山倉管', '台中倉管', '廠務', '會計', '管理員'];
@@ -1323,6 +1328,15 @@ stocktakeDeleteBtn.addEventListener('click', async () => {
   }
 });
 
+// 兩種列印共用同一套 .print-only 機制，但畫面上同時存在「空白表單」跟「盤差表」兩份print-only
+// 區塊，列印時用inline style明確指定只顯示要印的那一份，不然兩份會同時印出來疊在一起
+// （inline style的優先度比@media print裡的.print-only規則高，蓋得過去）
+function showOnlyPrintSheet(sheetToShow) {
+  [stocktakePrintSheet, stocktakeResultPrintSheet].forEach(el => {
+    el.style.display = el === sheetToShow ? '' : 'none';
+  });
+}
+
 stocktakePrintBtn.addEventListener('click', () => {
   if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
   const session = currentStocktakeSessions.find(s => s.id === selectedStocktakeSessionId);
@@ -1338,6 +1352,36 @@ stocktakePrintBtn.addEventListener('click', () => {
       <td></td>
     </tr>
   `).join('');
+  showOnlyPrintSheet(stocktakePrintSheet);
+  window.print();
+});
+
+// 盤差表：盤點完、系統數量/盤點數量/差異/備註都填好之後要印出來的結果報表，
+// 跟畫面上的表格（renderStocktakeTable）同一套差異計算邏輯
+stocktakeResultPrintBtn.addEventListener('click', () => {
+  if (!selectedStocktakeSessionId) { alert('請先選一份盤點'); return; }
+  const session = currentStocktakeSessions.find(s => s.id === selectedStocktakeSessionId);
+  const items = stocktakeItemsForSelectedSession();
+  stocktakeResultPrintTitle.textContent = session
+    ? `${session.warehouse} 盤差表（${new Date(session.createdAt).toLocaleDateString('zh-TW')}）`
+    : '盤差表';
+  stocktakeResultPrintTableBody.innerHTML = items.map(it => {
+    const hasCount = it.countedQty !== null && it.countedQty !== undefined;
+    const diff = hasCount ? formatQty(it.countedQty - it.systemQty) : null;
+    const diffText = diff === null ? '' : (diff > 0 ? `+${diff}` : `${diff}`);
+    return `
+    <tr>
+      <td>${escapeHTML(it.itemCode)}</td>
+      <td>${escapeHTML(it.itemName)}</td>
+      <td>${it.customer ? escapeHTML(it.customer) : ''}</td>
+      <td>${formatQty(it.systemQty)}</td>
+      <td>${hasCount ? it.countedQty : ''}</td>
+      <td>${diffText}</td>
+      <td>${it.remark ? escapeHTML(it.remark) : ''}</td>
+    </tr>
+  `;
+  }).join('');
+  showOnlyPrintSheet(stocktakeResultPrintSheet);
   window.print();
 });
 

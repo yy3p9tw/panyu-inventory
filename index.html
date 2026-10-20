@@ -313,6 +313,7 @@
               <select id="stocktakeSessionSelect" style="padding:6px 8px;"></select>
             </label>
             <button type="button" id="stocktakePrintBtn">列印空白表單</button>
+            <button type="button" id="stocktakeResultPrintBtn" class="secondary">列印盤差表</button>
             <button type="button" id="stocktakeDeleteBtn" style="background:var(--color-danger); color:#fff;">刪除這份盤點</button>
           </div>
 
@@ -336,6 +337,17 @@
             <tr><th>品號</th><th>品名</th><th>客戶</th><th>盤點數量</th></tr>
           </thead>
           <tbody id="stocktakePrintTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- 盤差表：盤點完、數字都輸入後的結果報表，列印時顯示 -->
+      <div id="stocktakeResultPrintSheet" class="print-only">
+        <h2 id="stocktakeResultPrintTitle"></h2>
+        <table class="data-table">
+          <thead>
+            <tr><th>品號</th><th>品名</th><th>客戶</th><th>系統數量</th><th>盤點數量</th><th>差異</th><th>備註（差異原因）</th></tr>
+          </thead>
+          <tbody id="stocktakeResultPrintTableBody"></tbody>
         </table>
       </div>
 
@@ -432,6 +444,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=63"></script>
+  <script type="module" src="app.js?v=64"></script>
 </body>
 </html>
