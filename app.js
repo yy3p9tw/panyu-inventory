@@ -155,9 +155,6 @@ let currentStocktakeItems = [];
 let selectedStocktakeSessionId = null;
 let unsubscribeOwnProfile = null;
 let unsubscribeUsers = null;
-// 角色簽章：記錄上次真的載入過資料時的角色組合，profile監聽背景重連時角色沒變就不用整批重讀
-// （見 loadScopedData 呼叫處），避免後台自己開著頁面也被重連機制榨乾讀取額度。
-let currentRolesSignature = null;
 // 自己剛寫入的時間戳記：touchLastUpdate的監聽會連自己這個分頁的寫入都收到（Firestore本地回音），
 // 記住自己剛寫的時間戳，監聽收到同一個值就跳過，不然每次「整批」寫入都會被自己的監聽再觸發
 // 一次loadScopedData，平白多讀一次。
@@ -216,8 +213,8 @@ onAuthStateChanged(auth, async user => {
   // 一定要先把舊帳號的訂閱全部關掉，不然畫面會殘留舊帳號的角色權限。
   if (unsubscribeOwnProfile) { unsubscribeOwnProfile(); unsubscribeOwnProfile = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
+  loadedCollections.clear(); // 換帳號，之前讀過的記錄作廢，不然新帳號會誤以為資料已經讀過而跳過重讀
   currentRoles = [];
-  currentRolesSignature = null;
   currentStock = [];
   currentUsers = [];
   currentFactoryMaterial = [];
@@ -243,15 +240,10 @@ onAuthStateChanged(auth, async user => {
     await touchOwnProfile(user.uid, user.email);
 
     unsubscribeOwnProfile = subscribeToOwnProfile(user.uid, profile => {
-      const roles = profile.roles || [];
-      currentRoles = roles;
+      currentRoles = profile.roles || [];
+      // applyRoleVisibility 內部會確保目前顯示的分頁資料有載入；loadTabData對「已經讀過」的
+      // collection是no-op，所以這個監聽背景重連、角色其實沒變時重複呼叫也不會多花讀取量
       applyRoleVisibility();
-      // 角色組合真的變了（或第一次登入）才整批重讀，單純重連、角色沒變就跳過
-      const sig = [...roles].sort().join(',');
-      if (sig !== currentRolesSignature) {
-        currentRolesSignature = sig;
-        loadScopedData();
-      }
     });
   } else {
     currentUid = null;
@@ -302,11 +294,14 @@ function applyRoleVisibility() {
   historyBtn.style.display = (canSeeStock || canSeeFactory) ? '' : 'none';
   usersBtn.style.display = isAdmin ? '' : 'none';
 
-  // 如果目前開著的分頁被隱藏了，自動切到第一個看得到的分頁
+  // 如果目前開著的分頁被隱藏了，自動切到第一個看得到的分頁；沒換分頁的話，確保目前這個
+  // 分頁的資料有載入（loadTabData對已經讀過的collection是no-op，重複呼叫不會多花讀取量）
   const activeBtn = document.querySelector('.tab-btn.active');
   if (activeBtn && activeBtn.style.display === 'none') {
     const firstVisible = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
-    if (firstVisible) firstVisible.click();
+    if (firstVisible) firstVisible.click(); // click會觸發下面分頁切換的loadTabData
+  } else if (activeBtn) {
+    loadTabData(activeBtn.dataset.tab);
   }
 
   renderTaishanTable();
@@ -323,52 +318,86 @@ function applyRoleVisibility() {
   }
 }
 
-// 資料改成讀一次就好，不用即時監聽（見 inventory-service.js 的 fetchCollectionOnce 註解——
-// 單一帳號自己開著頁面，手機/筆電背景重連一樣會把11個collection整個重讀一次，一樣會把免費
-// 讀取額度衝爆）。依目前角色能看到的範圍決定要讀哪些collection，登入/角色變了/自己寫入資料後/
-// 按重新整理/偵測到別的分頁有更新時呼叫這個，一次讀完重新渲染整個畫面。
+// ---------- 載入資料（點到那個分頁才讀，沒點過的分頁不會產生讀取） ----------
+// 大部分時候只會用到一兩個分頁，一登入就把角色看得到的全部collection讀完太浪費。
+// 改成每個分頁各自聲明自己要哪些collection，切過去才讀、讀過了就不重讀（除非手動整理/偵測到更新）。
+// 分頁本身已經依角色顯示/隱藏，所以這裡不用再重複判斷角色——使用者點不到被隱藏的分頁按鈕。
+
+const TAB_DEPENDENCIES = {
+  taishan: ['stock', 'batchList', 'lockedStock', 'pendingAdjustments', 'itemReference'],
+  taichung: ['stock', 'batchList', 'lockedStock', 'pendingAdjustments', 'itemReference'],
+  factory: ['factoryMaterial', 'pendingAdjustments', 'batchList'],
+  availableMaterial: ['stock', 'itemReference', 'pendingAdjustments', 'batchList'],
+  reference: ['itemReference'],
+  summary: ['summary'],
+  batch: ['batchList'],
+  expiring: ['batchList'],
+  consignment: ['consignment', 'consignmentLedger', 'pendingAdjustments', 'lockedStock'],
+  lockedStock: ['lockedStock'],
+  stocktake: ['stock', 'pendingAdjustments', 'consignment', 'consignmentLedger', 'stocktakeSessions', 'stocktakeItems'],
+  import: [],
+  history: [],
+  users: [] // 使用者清單是獨立的即時監聽（見上面 unsubscribeUsers），跟這套機制無關
+};
+
+function applyCollection(name, rows) {
+  if (name === 'stock') currentStock = rows;
+  else if (name === 'factoryMaterial') currentFactoryMaterial = rows;
+  else if (name === 'itemReference') currentItemReference = rows;
+  else if (name === 'summary') currentSummary = rows;
+  else if (name === 'batchList') currentBatchList = rows;
+  else if (name === 'pendingAdjustments') currentPendingAdjustments = rows;
+  else if (name === 'consignment') currentConsignment = rows;
+  else if (name === 'lockedStock') currentLockedStock = rows;
+  else if (name === 'consignmentLedger') currentConsignmentLedger = rows;
+  else if (name === 'stocktakeSessions') currentStocktakeSessions = rows;
+  else if (name === 'stocktakeItems') currentStocktakeItems = rows;
+}
+
+function renderAll() {
+  renderTaishanTable();
+  renderTaichungTable();
+  renderFactoryMaterialTable();
+  renderAvailableMaterialTable();
+  renderItemReferenceTable();
+  renderSummaryTable();
+  renderBatchTable();
+  renderExpiringTable();
+  renderConsignmentTable();
+  renderConsignLedgerPanel();
+  renderLockedStockTable();
+  renderStocktakeSessionSelect();
+}
+
+const loadedCollections = new Set();
+
+// 切到某個分頁：把那個分頁需要、但還沒讀過的collection讀回來（已經讀過的不重讀）
+async function loadTabData(tabKey) {
+  const deps = TAB_DEPENDENCIES[tabKey] || [];
+  const toFetch = deps.filter(n => !loadedCollections.has(n));
+  if (!toFetch.length) return;
+  if (refreshStatus) refreshStatus.textContent = '讀取中...';
+  try {
+    const results = await Promise.all(toFetch.map(fetchCollectionOnce));
+    toFetch.forEach((name, i) => { loadedCollections.add(name); applyCollection(name, results[i]); });
+    renderAll();
+    if (refreshStatus) refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  } catch (err) {
+    if (refreshStatus) refreshStatus.textContent = '讀取失敗：' + err.message;
+  }
+}
+
+// 手動「重新整理」、偵測到別的分頁有更新、或自己寫入資料後呼叫這個：只重讀「已經讀過」的
+// collection，沒點過的分頁本來就還沒有資料、不需要理它
 async function loadScopedData() {
+  const names = [...loadedCollections];
+  if (!names.length) return;
   if (refreshBtn) refreshBtn.disabled = true;
   if (refreshStatus) refreshStatus.textContent = '讀取中...';
   try {
-    const canSeeStock = visibleWarehouses.length > 0;
-    // 純泰山倉管（沒有廠務身分）也需要參照資料，才能套用「註記=隱/隱藏」的品項隱藏規則
-    const needsItemReference = canSeeFactory || currentRoles.includes('泰山倉管');
-
-    const names = ['stock'];
-    if (canSeeFactory) names.push('factoryMaterial');
-    if (needsItemReference) names.push('itemReference');
-    if (canSeeSummary) names.push('summary');
-    if (canSeeStock || canSeeFactory) names.push('batchList', 'pendingAdjustments');
-    if (canSeeStock) names.push('consignment', 'lockedStock', 'consignmentLedger', 'stocktakeSessions', 'stocktakeItems');
-
     const results = await Promise.all(names.map(fetchCollectionOnce));
-    const data = Object.fromEntries(names.map((n, i) => [n, results[i]]));
-
-    currentStock = data.stock;
-    currentFactoryMaterial = canSeeFactory ? data.factoryMaterial : [];
-    currentItemReference = needsItemReference ? data.itemReference : [];
-    currentSummary = canSeeSummary ? data.summary : [];
-    currentBatchList = (canSeeStock || canSeeFactory) ? data.batchList : [];
-    currentPendingAdjustments = (canSeeStock || canSeeFactory) ? data.pendingAdjustments : [];
-    currentConsignment = canSeeStock ? data.consignment : [];
-    currentLockedStock = canSeeStock ? data.lockedStock : [];
-    currentConsignmentLedger = canSeeStock ? data.consignmentLedger : [];
-    currentStocktakeSessions = canSeeStock ? data.stocktakeSessions : [];
-    currentStocktakeItems = canSeeStock ? data.stocktakeItems : [];
-
-    renderTaishanTable();
-    renderTaichungTable();
-    renderFactoryMaterialTable();
-    renderAvailableMaterialTable();
-    renderItemReferenceTable();
-    renderSummaryTable();
-    renderBatchTable();
-    renderExpiringTable();
-    renderConsignmentTable();
-    renderConsignLedgerPanel();
-    renderLockedStockTable();
-    renderStocktakeSessionSelect();
+    names.forEach((name, i) => applyCollection(name, results[i]));
+    renderAll();
     if (refreshStatus) refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
   } catch (err) {
     if (refreshStatus) refreshStatus.textContent = '讀取失敗：' + err.message;
@@ -386,6 +415,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
     document.getElementById('tab' + btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)).style.display = '';
+    loadTabData(btn.dataset.tab);
   });
 });
 

@@ -202,39 +202,65 @@ wireHistoryQuery({
   tableBody: document.getElementById('historyTableBody')
 });
 
-// ---------- 分頁切換 ----------
+// ---------- 載入資料（點到那個分頁才讀，沒點過的分頁不會產生讀取） ----------
+// 大部分人只是快速看一下某個分頁就離開，一開頁面就把所有分頁的collection全部讀完太浪費，
+// 改成每個分頁各自聲明自己要哪些collection，切過去才讀、讀過了就不重讀（除非手動整理/偵測到更新）
 
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
-    document.getElementById('tab' + btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)).style.display = '';
-  });
-});
+const TAB_DEPENDENCIES = {
+  factory: ['factoryMaterial', 'pendingAdjustments', 'batchList'],
+  availableMaterial: ['stock', 'itemReference', 'pendingAdjustments', 'batchList'],
+  expiring: ['batchList'],
+  lockedStock: ['lockedStock'],
+  history: [] // 歷史是按「查詢」當下才讀 dailySnapshots 的單一文件，跟這套機制無關
+};
 
-// ---------- 載入資料 ----------
-// 資料是每天匯入一次，前台不用即時監聽，開頁面讀一次就好，要看最新的按「重新整理」
+function applyCollection(name, rows) {
+  if (name === 'stock') currentStock = rows;
+  else if (name === 'batchList') currentBatchList = rows;
+  else if (name === 'factoryMaterial') currentFactoryMaterial = rows;
+  else if (name === 'itemReference') currentItemReference = rows;
+  else if (name === 'lockedStock') currentLockedStock = rows;
+  else if (name === 'pendingAdjustments') currentPendingAdjustments = rows;
+}
+
+function renderAll() {
+  renderFactoryMaterialTable();
+  renderAvailableMaterialTable();
+  renderExpiringTable();
+  renderLockedStockTable();
+}
 
 const refreshBtn = document.getElementById('refreshBtn');
 const refreshStatus = document.getElementById('refreshStatus');
+const loadedCollections = new Set();
 
-async function loadAllData() {
+// 切到某個分頁：把那個分頁需要、但還沒讀過的collection讀回來（已經讀過的不重讀）
+async function loadTabData(tabKey) {
+  const deps = TAB_DEPENDENCIES[tabKey] || [];
+  const toFetch = deps.filter(n => !loadedCollections.has(n));
+  if (!toFetch.length) return;
+  refreshStatus.textContent = '讀取中...';
+  try {
+    const results = await Promise.all(toFetch.map(fetchCollectionOnce));
+    toFetch.forEach((name, i) => { loadedCollections.add(name); applyCollection(name, results[i]); });
+    renderAll();
+    refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  } catch (err) {
+    refreshStatus.textContent = '讀取失敗：' + err.message;
+  }
+}
+
+// 手動「重新整理」或偵測到後台有更新：只重讀「已經讀過」的collection，沒點過的分頁本來就
+// 還沒有資料、不需要理它
+async function refreshLoadedData() {
+  const names = [...loadedCollections];
+  if (!names.length) return;
   refreshBtn.disabled = true;
   refreshStatus.textContent = '讀取中...';
   try {
-    [currentStock, currentBatchList, currentFactoryMaterial, currentItemReference, currentLockedStock, currentPendingAdjustments] = await Promise.all([
-      fetchCollectionOnce('stock'),
-      fetchCollectionOnce('batchList'),
-      fetchCollectionOnce('factoryMaterial'),
-      fetchCollectionOnce('itemReference'),
-      fetchCollectionOnce('lockedStock'),
-      fetchCollectionOnce('pendingAdjustments')
-    ]);
-    renderFactoryMaterialTable();
-    renderAvailableMaterialTable();
-    renderExpiringTable();
-    renderLockedStockTable();
+    const results = await Promise.all(names.map(fetchCollectionOnce));
+    names.forEach((name, i) => applyCollection(name, results[i]));
+    renderAll();
     refreshStatus.textContent = `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
   } catch (err) {
     refreshStatus.textContent = '讀取失敗：' + err.message;
@@ -243,9 +269,22 @@ async function loadAllData() {
   }
 }
 
-refreshBtn.addEventListener('click', loadAllData);
-loadAllData();
+refreshBtn.addEventListener('click', refreshLoadedData);
 
 // 後台更新完資料會touch meta/lastUpdate，這裡自動偵測到就重新讀一次，
 // 不用廠務自己記得按「重新整理」
-subscribeLastUpdate(() => loadAllData());
+subscribeLastUpdate(() => refreshLoadedData());
+
+// ---------- 分頁切換 ----------
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    document.getElementById('tab' + btn.dataset.tab.charAt(0).toUpperCase() + btn.dataset.tab.slice(1)).style.display = '';
+    loadTabData(btn.dataset.tab);
+  });
+});
+
+loadTabData('factory'); // 預設顯示的分頁，一開頁面就讀
