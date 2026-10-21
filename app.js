@@ -14,13 +14,14 @@ import {
   replaceBatchList,
   replaceConsignment,
   addConsignmentLedgerEntry, deleteConsignmentLedgerEntry, importConsignmentLedgerEntries,
+  fetchConsignmentLedgerEntries, rebuildConsignmentBalance,
   replacePendingAdjustments,
   addLockedStock, updateLockedStock, deleteLockedStock,
   saveDailySnapshot, loadDailySnapshot, deleteOldSnapshots,
   clearDailyErpData,
   createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
   touchLastUpdate, subscribeToLastUpdate
-} from './inventory-service.js?v=45';
+} from './inventory-service.js?v=46';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -86,6 +87,8 @@ const expiringCount = document.getElementById('expiringCount');
 const consignmentSearchInput = document.getElementById('consignmentSearchInput');
 const consignmentTableBody = document.getElementById('consignmentTableBody');
 const consignmentCount = document.getElementById('consignmentCount');
+const rebuildConsignmentBalanceBtn = document.getElementById('rebuildConsignmentBalanceBtn');
+const rebuildConsignmentBalanceMsg = document.getElementById('rebuildConsignmentBalanceMsg');
 
 const consignLedgerModal = document.getElementById('consignLedgerModal');
 const consignLedgerTitle = document.getElementById('consignLedgerTitle');
@@ -149,7 +152,7 @@ let currentBatchList = [];
 let currentConsignment = [];
 let currentPendingAdjustments = [];
 let currentLockedStock = [];
-let currentConsignmentLedger = [];
+let currentConsignmentBalance = [];
 let currentStocktakeSessions = [];
 let currentStocktakeItems = [];
 let selectedStocktakeSessionId = null;
@@ -224,7 +227,7 @@ onAuthStateChanged(auth, async user => {
   currentConsignment = [];
   currentPendingAdjustments = [];
   currentLockedStock = [];
-  currentConsignmentLedger = [];
+  currentConsignmentBalance = [];
   currentStocktakeSessions = [];
   currentStocktakeItems = [];
   selectedStocktakeSessionId = null;
@@ -332,9 +335,9 @@ const TAB_DEPENDENCIES = {
   summary: ['summary'],
   batch: ['batchList'],
   expiring: ['batchList'],
-  consignment: ['consignment', 'consignmentLedger', 'pendingAdjustments', 'lockedStock'],
+  consignment: ['consignment', 'consignmentBalance', 'pendingAdjustments', 'lockedStock'],
   lockedStock: ['lockedStock'],
-  stocktake: ['stock', 'pendingAdjustments', 'consignment', 'consignmentLedger', 'stocktakeSessions', 'stocktakeItems'],
+  stocktake: ['stock', 'pendingAdjustments', 'consignment', 'consignmentBalance', 'stocktakeSessions', 'stocktakeItems'],
   import: [],
   history: [],
   users: [] // 使用者清單是獨立的即時監聽（見上面 unsubscribeUsers），跟這套機制無關
@@ -349,7 +352,7 @@ function applyCollection(name, rows) {
   else if (name === 'pendingAdjustments') currentPendingAdjustments = rows;
   else if (name === 'consignment') currentConsignment = rows;
   else if (name === 'lockedStock') currentLockedStock = rows;
-  else if (name === 'consignmentLedger') currentConsignmentLedger = rows;
+  else if (name === 'consignmentBalance') currentConsignmentBalance = rows;
   else if (name === 'stocktakeSessions') currentStocktakeSessions = rows;
   else if (name === 'stocktakeItems') currentStocktakeItems = rows;
 }
@@ -929,25 +932,26 @@ expiringSearchInput.addEventListener('input', renderExpiringTable);
 
 // ---------- 寄庫 ----------
 
-// 客戶+品號+倉庫 -> { total, latestDate }，從逐筆帶日期的進出紀錄加總算出來的
-// （對照過0805庫存YU的「寄庫」分頁：一欄一天記錄進出，目前數量=全部加總，寄庫日期=最近一筆的日期）
+// 寄庫餘額(consignmentBalance)是已經算好的加總，每個客戶+品項一筆，不用每次都把完整進出紀錄
+// (consignmentLedger)整個讀出來現場加總——見inventory-service.js的applyConsignmentBalanceDelta。
+function consignmentBalanceFor(customer, itemCode) {
+  return currentConsignmentBalance.find(b => b.customer === customer && b.itemCode === itemCode) || null;
+}
+
+// 客戶+品號+倉庫 -> { total }
 function consignmentLedgerSummary(customer, itemCode, warehouse) {
-  const entries = currentConsignmentLedger.filter(l =>
-    l.customer === customer && l.itemCode === itemCode && l.warehouse === warehouse
-  );
-  if (!entries.length) return null;
-  const total = entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
-  const latestDate = entries.reduce((max, e) => (e.date > max ? e.date : max), entries[0].date);
-  return { total, latestDate };
+  const b = consignmentBalanceFor(customer, itemCode);
+  if (!b) return null;
+  const total = warehouse === '泰山' ? (b.taishanTotal || 0) : warehouse === '台中' ? (b.taichungTotal || 0) : 0;
+  return { total };
 }
 
 // 客戶+品號（不分倉庫）的進出紀錄總和——使用者實際手動記的進出才是最準的，
 // 有紀錄就用這個當「寄庫數量」，比 ERP 寄庫.xlsx 的原始數字更即時（ERP要等下次匯出才會更新）。
 // 完全沒有進出紀錄的品項（例如還沒被收進歷史匯入的舊資料）才退回用 ERP 原始數字+未核完調整。
 function consignmentLedgerGrandTotal(customer, itemCode) {
-  const entries = currentConsignmentLedger.filter(l => l.customer === customer && l.itemCode === itemCode);
-  if (!entries.length) return null;
-  return entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
+  const b = consignmentBalanceFor(customer, itemCode);
+  return b ? (b.total || 0) : null;
 }
 
 function renderConsignmentTable() {
@@ -970,15 +974,12 @@ function renderConsignmentTable() {
 
   // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
   // 這種也要能顯示，不能只靠 currentConsignment 有沒有這筆資料，所以把兩邊的客戶+品號做聯集
+  // （現在跟餘額表(consignmentBalance)做聯集，不是跟完整進出紀錄，因為餘額表已經是去重過、
+  // 一個客戶+品項一筆的資料，不用自己再去重）
   const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemCode}__${r.customer}`));
-  const ledgerOnlyRows = [];
-  const seenLedgerOnly = new Set();
-  currentConsignmentLedger.forEach(l => {
-    const key = `${l.itemCode}__${l.customer}`;
-    if (consignmentKeys.has(key) || seenLedgerOnly.has(key)) return;
-    seenLedgerOnly.add(key);
-    ledgerOnlyRows.push({ itemCode: l.itemCode, itemName: l.itemName, customer: l.customer, qty: 0 });
-  });
+  const ledgerOnlyRows = currentConsignmentBalance
+    .filter(b => !consignmentKeys.has(`${b.itemCode}__${b.customer}`))
+    .map(b => ({ itemCode: b.itemCode, itemName: b.itemName, customer: b.customer, qty: 0 }));
   const allRows = [...currentConsignment, ...ledgerOnlyRows];
 
   // 寄庫數量0的品項不用顯示（0代表這筆已經沒有寄庫中的貨了）
@@ -1030,18 +1031,50 @@ function renderConsignmentTable() {
 
 consignmentSearchInput.addEventListener('input', renderConsignmentTable);
 
+// 寄庫餘額(consignmentBalance)第一次啟用時要跑一次，之後只有懷疑餘額跟實際進出紀錄兜不起來
+// 才需要手動重建——平常新增/刪除一筆紀錄時已經即時用increment()同步更新了，不需要常態重算
+rebuildConsignmentBalanceBtn.addEventListener('click', async () => {
+  if (!confirm('確定要重建寄庫餘額嗎？會把整個進出紀錄重新加總一次，正常情況不需要這樣做。')) return;
+  rebuildConsignmentBalanceBtn.disabled = true;
+  rebuildConsignmentBalanceMsg.textContent = '重建中...';
+  try {
+    const result = await rebuildConsignmentBalance();
+    rebuildConsignmentBalanceMsg.textContent = `已重建，共 ${result.balances} 個客戶+品項組合，來自 ${result.ledgerEntries} 筆進出紀錄。`;
+    touchLastUpdateSelf();
+    await loadScopedData();
+  } catch (err) {
+    rebuildConsignmentBalanceMsg.textContent = '重建失敗：' + err.message;
+  } finally {
+    rebuildConsignmentBalanceBtn.disabled = false;
+  }
+});
+
 // ---------- 寄庫進出明細面板：點泰山/台中的數字按鈕打開，逐筆新增/刪除帶日期的紀錄 ----------
 
 let consignLedgerSelection = null; // { customer, itemCode, itemName, warehouse }
+// 這個明細面板打開的那一筆的完整進出紀錄——點開才查（見loadConsignLedgerDetail），不是跟著
+// 寄庫分頁預先載入的，不然等於還是把整個consignmentLedger讀回來，優化就白做了
+let currentConsignLedgerDetail = [];
+
+// 點開明細面板當下才查這一筆(customer+itemCode+warehouse)的完整進出紀錄，只查這一筆不是整個collection
+async function loadConsignLedgerDetail() {
+  if (!consignLedgerSelection) return;
+  const { customer, itemCode, warehouse } = consignLedgerSelection;
+  consignLedgerCount.textContent = '讀取中...';
+  try {
+    currentConsignLedgerDetail = await fetchConsignmentLedgerEntries(customer, itemCode, warehouse);
+    renderConsignLedgerPanel();
+  } catch (err) {
+    consignLedgerCount.textContent = '讀取失敗：' + err.message;
+  }
+}
 
 function renderConsignLedgerPanel() {
   if (!consignLedgerSelection) return;
-  const { customer, itemCode, itemName, warehouse } = consignLedgerSelection;
+  const { customer, itemName, warehouse } = consignLedgerSelection;
   consignLedgerTitle.textContent = `${itemName}（${customer}／${warehouse}）`;
 
-  const entries = [...currentConsignmentLedger]
-    .filter(l => l.customer === customer && l.itemCode === itemCode && l.warehouse === warehouse)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const entries = [...currentConsignLedgerDetail].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const total = entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
   consignLedgerCount.textContent = entries.length ? `共 ${entries.length} 筆，目前加總 ${total}` : '目前沒有紀錄';
@@ -1061,7 +1094,7 @@ function renderConsignLedgerPanel() {
   `).join('');
 }
 
-consignmentTableBody.addEventListener('click', e => {
+consignmentTableBody.addEventListener('click', async e => {
   const btn = e.target.closest('.consign-ledger-open-btn');
   if (!btn) return;
   consignLedgerSelection = {
@@ -1074,11 +1107,14 @@ consignmentTableBody.addEventListener('click', e => {
   consignLedgerNewQty.value = '';
   consignLedgerNewRemark.value = '';
   consignLedgerModal.style.display = 'flex';
-  renderConsignLedgerPanel();
+  currentConsignLedgerDetail = [];
+  consignLedgerTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#6b7280;">讀取中...</td></tr>`;
+  await loadConsignLedgerDetail();
 });
 
 function closeConsignLedgerModal() {
   consignLedgerSelection = null;
+  currentConsignLedgerDetail = [];
   consignLedgerModal.style.display = 'none';
 }
 
@@ -1107,7 +1143,7 @@ consignLedgerAddBtn.addEventListener('click', async () => {
     consignLedgerNewQty.value = '';
     consignLedgerNewRemark.value = '';
     touchLastUpdateSelf();
-    await loadScopedData();
+    await Promise.all([loadScopedData(), loadConsignLedgerDetail()]);
   } catch (err) {
     alert('新增失敗：' + err.message);
   }
@@ -1121,7 +1157,7 @@ consignLedgerTableBody.addEventListener('click', async e => {
   try {
     await deleteConsignmentLedgerEntry(id);
     touchLastUpdateSelf();
-    await loadScopedData();
+    await Promise.all([loadScopedData(), loadConsignLedgerDetail()]);
   } catch (err) {
     alert('刪除失敗：' + err.message);
   }
@@ -1264,14 +1300,14 @@ function buildStocktakeItems(warehouse) {
   });
   // 寄庫(consignment)現在只讀ERP數量不是0的部分（見inventory-service.js的fetchCollectionOnce），
   // ERP數量剛好是0、但進出紀錄裡有紀錄的客戶+品項不會出現在currentConsignment裡，
-  // 這裡要跟寄庫分頁一樣從進出紀錄把這種品項補回來，不然盤點表會漏掉
-  currentConsignmentLedger.forEach(l => {
-    const key = `${l.itemCode}__${l.customer}`;
+  // 這裡要跟寄庫分頁一樣從餘額表(consignmentBalance)把這種品項補回來，不然盤點表會漏掉
+  currentConsignmentBalance.forEach(b => {
+    const key = `${b.itemCode}__${b.customer}`;
     if (seenConsignmentKeys.has(key)) return;
     seenConsignmentKeys.add(key);
-    const summary = consignmentLedgerSummary(l.customer, l.itemCode, warehouse);
+    const summary = consignmentLedgerSummary(b.customer, b.itemCode, warehouse);
     const qty = summary ? formatQty(summary.total) : 0;
-    if (qty !== 0) consignmentItems.push({ itemCode: l.itemCode, itemName: l.itemName, customer: l.customer, systemQty: qty });
+    if (qty !== 0) consignmentItems.push({ itemCode: b.itemCode, itemName: b.itemName, customer: b.customer, systemQty: qty });
   });
 
   return [...stockItems, ...consignmentItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));

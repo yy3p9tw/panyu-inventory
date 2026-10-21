@@ -13,7 +13,8 @@ import {
   writeBatch,
   getDocs,
   query,
-  where
+  where,
+  increment
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const stockCol = collection(db, 'stock');
@@ -256,13 +257,99 @@ export async function replaceConsignment(records) {
 // 目前數量是全部加總、寄庫日期是最近一筆的日期——這裡改成資料庫版本：每筆進出各自一筆帶日期的紀錄，
 // 不是一欄一天，畫面上即時加總算出目前數量跟最近日期。同一個客戶+品項+倉庫可以有很多筆，逐筆新增/刪除。
 
+// ---------- 寄庫餘額（consignmentBalance）：每個客戶+品項一筆，記錄目前加總數量 ----------
+// 寄庫數量本來是每次顯示都把這個客戶+品項「從有紀錄以來的所有進出紀錄」整個讀出來加總算出來的，
+// consignmentLedger只會越存越多、從不清空，久了這個加總動作變得很花讀取量。改成另外存一份
+// 已經算好的餘額，平常顯示只讀這份小很多的餘額表；新增/刪除一筆進出紀錄時用Firestore的increment()
+// 把變動量加/減到餘額上，不用重新整個重算。只有使用者點進某個客戶品項看明細時，才會另外查
+// 那一筆的完整進出紀錄（見app.js的loadConsignLedgerDetail，只查那一筆，不是整個collection）。
+function consignmentBalanceDocId(customer, itemCode) {
+  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}`;
+}
+
+async function applyConsignmentBalanceDelta(customer, itemCode, itemName, warehouse, deltaQty) {
+  if (!deltaQty) return;
+  const ref = doc(db, 'consignmentBalance', consignmentBalanceDocId(customer, itemCode));
+  const updates = {
+    customer, itemCode, itemName: itemName || '',
+    total: increment(deltaQty),
+    updatedAt: Date.now()
+  };
+  if (warehouse === '泰山') updates.taishanTotal = increment(deltaQty);
+  else if (warehouse === '台中') updates.taichungTotal = increment(deltaQty);
+  await setDoc(ref, updates, { merge: true });
+}
+
+// 從頭把consignmentBalance整個重算一次（讀一次完整的consignmentLedger）。只在兩種情況呼叫：
+// 1. 匯入整批歷史進出紀錄之後（因為整個collection可能被換掉，不能只用增量更新）
+// 2. 後台手動按「重建寄庫餘額」（第一次導入這個功能時的初始化，或懷疑餘額跟實際兜不起來時的保險）
+export async function rebuildConsignmentBalance() {
+  const ledgerSnap = await getDocs(collection(db, 'consignmentLedger'));
+  const balances = new Map();
+  ledgerSnap.docs.forEach(d => {
+    const data = d.data();
+    const key = consignmentBalanceDocId(data.customer, data.itemCode);
+    if (!balances.has(key)) {
+      balances.set(key, { customer: data.customer, itemCode: data.itemCode, itemName: data.itemName || '', total: 0, taishanTotal: 0, taichungTotal: 0 });
+    }
+    const b = balances.get(key);
+    const qty = Number(data.deltaQty) || 0;
+    b.total += qty;
+    if (data.warehouse === '泰山') b.taishanTotal += qty;
+    else if (data.warehouse === '台中') b.taichungTotal += qty;
+    if (data.itemName && !b.itemName) b.itemName = data.itemName;
+  });
+
+  const oldBalanceSnap = await getDocs(collection(db, 'consignmentBalance'));
+  const deleteChunks = [];
+  const toDelete = [...oldBalanceSnap.docs];
+  while (toDelete.length) deleteChunks.push(toDelete.splice(0, 450));
+  for (const chunk of deleteChunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  const entries = [...balances.entries()];
+  const writeChunks = [];
+  while (entries.length) writeChunks.push(entries.splice(0, 450));
+  for (const chunk of writeChunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(([key, b]) => {
+      batch.set(doc(db, 'consignmentBalance', key), { ...b, updatedAt: Date.now() });
+    });
+    await batch.commit();
+  }
+
+  return { balances: balances.size, ledgerEntries: ledgerSnap.docs.length };
+}
+
 // entry: { customer, itemCode, itemName, warehouse, date('YYYY-MM-DD'), deltaQty(正=寄入/負=出庫), remark }
 export async function addConsignmentLedgerEntry(entry) {
   await addDoc(collection(db, 'consignmentLedger'), { ...entry, updatedAt: Date.now() });
+  await applyConsignmentBalanceDelta(entry.customer, entry.itemCode, entry.itemName, entry.warehouse, entry.deltaQty);
 }
 
 export async function deleteConsignmentLedgerEntry(id) {
-  await deleteDoc(doc(db, 'consignmentLedger', id));
+  const ref = doc(db, 'consignmentLedger', id);
+  const snap = await getDoc(ref);
+  await deleteDoc(ref);
+  if (snap.exists()) {
+    const data = snap.data();
+    await applyConsignmentBalanceDelta(data.customer, data.itemCode, data.itemName, data.warehouse, -(Number(data.deltaQty) || 0));
+  }
+}
+
+// 查某個客戶+品項+倉庫的完整進出紀錄明細——只在使用者點開明細面板時才呼叫，只查這一筆，
+// 不是整個consignmentLedger collection
+export async function fetchConsignmentLedgerEntries(customer, itemCode, warehouse) {
+  const snap = await getDocs(query(
+    collection(db, 'consignmentLedger'),
+    where('customer', '==', customer),
+    where('itemCode', '==', itemCode),
+    where('warehouse', '==', warehouse)
+  ));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 // 從組合檔「寄庫」分頁批次匯入歷史進出紀錄（該分頁一欄一天，這裡已經在 app.js 解析成一筆一筆帶日期的紀錄）。
@@ -282,7 +369,10 @@ export async function importConsignmentLedgerEntries(records) {
     id: consignmentLedgerImportDocId(r.customer, r.itemCode, r.warehouse, r.date),
     data: { ...r, updatedAt: Date.now() }
   }));
-  return replaceWholeCollection('consignmentLedger', docs);
+  const result = await replaceWholeCollection('consignmentLedger', docs);
+  // 整個collection被取代了，餘額不能只用增量更新，要整個重算一次
+  await rebuildConsignmentBalance();
+  return result;
 }
 
 // ---------- 未核完調整（銷貨/銷退/進貨/退貨/組合/異動/調撥）：每次匯入完全覆蓋 ----------

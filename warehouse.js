@@ -36,7 +36,7 @@ const stocktakePrintTableBody = document.getElementById('stocktakePrintTableBody
 let currentStock = [];
 let currentBatchList = [];
 let currentConsignment = [];
-let currentConsignmentLedger = [];
+let currentConsignmentBalance = [];
 let currentLockedStock = [];
 let currentPendingAdjustments = [];
 let currentItemReference = [];
@@ -175,18 +175,22 @@ expiringSearchInput.addEventListener('input', renderExpiringTable);
 
 // ---------- 寄庫 ----------
 
+// 寄庫餘額(consignmentBalance)是已經算好的加總，每個客戶+品項一筆，不用每次都把完整進出紀錄
+// 整個讀出來現場加總——見inventory-service.js的applyConsignmentBalanceDelta
+function consignmentBalanceFor(customer, itemCode) {
+  return currentConsignmentBalance.find(b => b.customer === customer && b.itemCode === itemCode) || null;
+}
+
 function consignmentLedgerTotal(customer, itemCode, warehouse) {
-  const entries = currentConsignmentLedger.filter(l =>
-    l.customer === customer && l.itemCode === itemCode && l.warehouse === warehouse
-  );
-  return formatQty(entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0));
+  const b = consignmentBalanceFor(customer, itemCode);
+  if (!b) return 0;
+  return formatQty(warehouse === '泰山' ? (b.taishanTotal || 0) : warehouse === '台中' ? (b.taichungTotal || 0) : 0);
 }
 
 // 客戶+品號（不分倉庫）的進出紀錄總和，有紀錄就用這個當「寄庫數量」，比ERP原始數字更即時
 function consignmentLedgerGrandTotal(customer, itemCode) {
-  const entries = currentConsignmentLedger.filter(l => l.customer === customer && l.itemCode === itemCode);
-  if (!entries.length) return null;
-  return entries.reduce((sum, e) => sum + (Number(e.deltaQty) || 0), 0);
+  const b = consignmentBalanceFor(customer, itemCode);
+  return b ? (b.total || 0) : null;
 }
 
 function renderConsignmentTable() {
@@ -205,16 +209,12 @@ function renderConsignmentTable() {
   };
 
   // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
-  // 這種也要能顯示，把兩邊的客戶+品號做聯集
+  // 這種也要能顯示，把兩邊的客戶+品號做聯集（跟餘額表做聯集，不是跟完整進出紀錄，餘額表已經是
+  // 去重過、一個客戶+品項一筆的資料）
   const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemCode}__${r.customer}`));
-  const ledgerOnlyRows = [];
-  const seenLedgerOnly = new Set();
-  currentConsignmentLedger.forEach(l => {
-    const key = `${l.itemCode}__${l.customer}`;
-    if (consignmentKeys.has(key) || seenLedgerOnly.has(key)) return;
-    seenLedgerOnly.add(key);
-    ledgerOnlyRows.push({ itemCode: l.itemCode, itemName: l.itemName, customer: l.customer, qty: 0 });
-  });
+  const ledgerOnlyRows = currentConsignmentBalance
+    .filter(b => !consignmentKeys.has(`${b.itemCode}__${b.customer}`))
+    .map(b => ({ itemCode: b.itemCode, itemName: b.itemName, customer: b.customer, qty: 0 }));
   const allRows = [...currentConsignment, ...ledgerOnlyRows];
 
   let items = allRows.filter(r => displayQtyFor(r) !== 0);
@@ -396,7 +396,7 @@ const TAB_DEPENDENCIES = {
   taishan: ['stock', 'batchList', 'lockedStock', 'pendingAdjustments', 'itemReference'],
   taichung: ['stock', 'batchList', 'lockedStock', 'pendingAdjustments', 'itemReference'],
   expiring: ['batchList'],
-  consignment: ['consignment', 'consignmentLedger', 'pendingAdjustments', 'lockedStock'],
+  consignment: ['consignment', 'consignmentBalance', 'pendingAdjustments', 'lockedStock'],
   lockedStock: ['lockedStock'],
   stocktake: ['stocktakeSessions', 'stocktakeItems'],
   history: [] // 歷史是按「查詢」當下才讀 dailySnapshots 的單一文件，跟這套機制無關
@@ -406,7 +406,7 @@ function applyCollection(name, rows) {
   if (name === 'stock') currentStock = rows;
   else if (name === 'batchList') currentBatchList = rows;
   else if (name === 'consignment') currentConsignment = rows;
-  else if (name === 'consignmentLedger') currentConsignmentLedger = rows;
+  else if (name === 'consignmentBalance') currentConsignmentBalance = rows;
   else if (name === 'lockedStock') currentLockedStock = rows;
   else if (name === 'pendingAdjustments') currentPendingAdjustments = rows;
   else if (name === 'itemReference') currentItemReference = rows;

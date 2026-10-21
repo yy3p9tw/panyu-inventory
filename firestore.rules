@@ -20,6 +20,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null;
     }
+    match /consignmentBalance/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
     match /lockedStock/{doc} {
       allow read: if true;
       allow write: if request.auth != null;
