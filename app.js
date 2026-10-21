@@ -21,7 +21,7 @@ import {
   clearDailyErpData,
   createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
   touchLastUpdate, subscribeToLastUpdate
-} from './inventory-service.js?v=46';
+} from './inventory-service.js?v=47';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -932,25 +932,26 @@ expiringSearchInput.addEventListener('input', renderExpiringTable);
 
 // ---------- 寄庫 ----------
 
-// 寄庫餘額(consignmentBalance)是已經算好的加總，每個客戶+品項一筆，不用每次都把完整進出紀錄
+// 寄庫餘額(consignmentBalance)是已經算好的加總，每個客戶+品名一筆，不用每次都把完整進出紀錄
 // (consignmentLedger)整個讀出來現場加總——見inventory-service.js的applyConsignmentBalanceDelta。
-function consignmentBalanceFor(customer, itemCode) {
-  return currentConsignmentBalance.find(b => b.customer === customer && b.itemCode === itemCode) || null;
+// 用「客戶+品名」查，不是品號：寄庫常常是直接寄庫、從來沒進過一般庫存，品名才是可靠的識別。
+function consignmentBalanceFor(customer, itemName) {
+  return currentConsignmentBalance.find(b => b.customer === customer && b.itemName === itemName) || null;
 }
 
-// 客戶+品號+倉庫 -> { total }
-function consignmentLedgerSummary(customer, itemCode, warehouse) {
-  const b = consignmentBalanceFor(customer, itemCode);
+// 客戶+品名+倉庫 -> { total }
+function consignmentLedgerSummary(customer, itemName, warehouse) {
+  const b = consignmentBalanceFor(customer, itemName);
   if (!b) return null;
   const total = warehouse === '泰山' ? (b.taishanTotal || 0) : warehouse === '台中' ? (b.taichungTotal || 0) : 0;
   return { total };
 }
 
-// 客戶+品號（不分倉庫）的進出紀錄總和——使用者實際手動記的進出才是最準的，
+// 客戶+品名（不分倉庫）的進出紀錄總和——使用者實際手動記的進出才是最準的，
 // 有紀錄就用這個當「寄庫數量」，比 ERP 寄庫.xlsx 的原始數字更即時（ERP要等下次匯出才會更新）。
 // 完全沒有進出紀錄的品項（例如還沒被收進歷史匯入的舊資料）才退回用 ERP 原始數字+未核完調整。
-function consignmentLedgerGrandTotal(customer, itemCode) {
-  const b = consignmentBalanceFor(customer, itemCode);
+function consignmentLedgerGrandTotal(customer, itemName) {
+  const b = consignmentBalanceFor(customer, itemName);
   return b ? (b.total || 0) : null;
 }
 
@@ -967,18 +968,18 @@ function renderConsignmentTable() {
   // 寄庫數量：有進出紀錄就用進出紀錄的總和（比較即時，使用者手動記的才是實際狀況），
   // 完全沒有紀錄的品項才退回用 ERP 寄庫.xlsx 原始數字+未核完調整
   const displayQtyFor = r => {
-    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemCode);
+    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemName);
     if (ledgerTotal !== null) return formatQty(ledgerTotal);
     return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
   };
 
   // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
-  // 這種也要能顯示，不能只靠 currentConsignment 有沒有這筆資料，所以把兩邊的客戶+品號做聯集
+  // 這種也要能顯示，不能只靠 currentConsignment 有沒有這筆資料，所以把兩邊的客戶+品名做聯集
   // （現在跟餘額表(consignmentBalance)做聯集，不是跟完整進出紀錄，因為餘額表已經是去重過、
-  // 一個客戶+品項一筆的資料，不用自己再去重）
-  const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemCode}__${r.customer}`));
+  // 一個客戶+品項一筆的資料，不用自己再去重；用品名配對，不是品號，見consignmentBalanceFor）
+  const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemName}__${r.customer}`));
   const ledgerOnlyRows = currentConsignmentBalance
-    .filter(b => !consignmentKeys.has(`${b.itemCode}__${b.customer}`))
+    .filter(b => !consignmentKeys.has(`${b.itemName}__${b.customer}`))
     .map(b => ({ itemCode: b.itemCode, itemName: b.itemName, customer: b.customer, qty: 0 }));
   const allRows = [...currentConsignment, ...ledgerOnlyRows];
 
@@ -1003,7 +1004,7 @@ function renderConsignmentTable() {
   }
 
   const ledgerCell = (customer, itemCode, itemName, warehouse) => {
-    const summary = consignmentLedgerSummary(customer, itemCode, warehouse);
+    const summary = consignmentLedgerSummary(customer, itemName, warehouse);
     const text = summary ? String(formatQty(summary.total)) : '0';
     return `<button type="button" class="secondary consign-ledger-open-btn" data-customer="${escapeHTML(customer)}" data-item-code="${escapeHTML(itemCode)}" data-item-name="${escapeHTML(itemName)}" data-warehouse="${warehouse}" style="font-size:13px; padding:4px 8px;">${escapeHTML(text)}</button>`;
   };
@@ -1056,13 +1057,13 @@ let consignLedgerSelection = null; // { customer, itemCode, itemName, warehouse 
 // 寄庫分頁預先載入的，不然等於還是把整個consignmentLedger讀回來，優化就白做了
 let currentConsignLedgerDetail = [];
 
-// 點開明細面板當下才查這一筆(customer+itemCode+warehouse)的完整進出紀錄，只查這一筆不是整個collection
+// 點開明細面板當下才查這一筆(customer+itemName+warehouse)的完整進出紀錄，只查這一筆不是整個collection
 async function loadConsignLedgerDetail() {
   if (!consignLedgerSelection) return;
-  const { customer, itemCode, warehouse } = consignLedgerSelection;
+  const { customer, itemName, warehouse } = consignLedgerSelection;
   consignLedgerCount.textContent = '讀取中...';
   try {
-    currentConsignLedgerDetail = await fetchConsignmentLedgerEntries(customer, itemCode, warehouse);
+    currentConsignLedgerDetail = await fetchConsignmentLedgerEntries(customer, itemName, warehouse);
     renderConsignLedgerPanel();
   } catch (err) {
     consignLedgerCount.textContent = '讀取失敗：' + err.message;
@@ -1293,19 +1294,20 @@ function buildStocktakeItems(warehouse) {
   const consignmentItems = [];
   const seenConsignmentKeys = new Set();
   currentConsignment.forEach(r => {
-    seenConsignmentKeys.add(`${r.itemCode}__${r.customer}`);
-    const summary = consignmentLedgerSummary(r.customer, r.itemCode, warehouse);
+    seenConsignmentKeys.add(`${r.itemName}__${r.customer}`);
+    const summary = consignmentLedgerSummary(r.customer, r.itemName, warehouse);
     const qty = summary ? formatQty(summary.total) : 0;
     if (qty !== 0) consignmentItems.push({ itemCode: r.itemCode, itemName: r.itemName, customer: r.customer, systemQty: qty });
   });
   // 寄庫(consignment)現在只讀ERP數量不是0的部分（見inventory-service.js的fetchCollectionOnce），
   // ERP數量剛好是0、但進出紀錄裡有紀錄的客戶+品項不會出現在currentConsignment裡，
-  // 這裡要跟寄庫分頁一樣從餘額表(consignmentBalance)把這種品項補回來，不然盤點表會漏掉
+  // 這裡要跟寄庫分頁一樣從餘額表(consignmentBalance)把這種品項補回來（用品名配對，不是品號），
+  // 不然盤點表會漏掉
   currentConsignmentBalance.forEach(b => {
-    const key = `${b.itemCode}__${b.customer}`;
+    const key = `${b.itemName}__${b.customer}`;
     if (seenConsignmentKeys.has(key)) return;
     seenConsignmentKeys.add(key);
-    const summary = consignmentLedgerSummary(b.customer, b.itemCode, warehouse);
+    const summary = consignmentLedgerSummary(b.customer, b.itemName, warehouse);
     const qty = summary ? formatQty(summary.total) : 0;
     if (qty !== 0) consignmentItems.push({ itemCode: b.itemCode, itemName: b.itemName, customer: b.customer, systemQty: qty });
   });
@@ -1991,14 +1993,14 @@ function parseConsignmentDateColumns(header, startIdx, endIdx) {
   return cols;
 }
 
-// 組合檔「寄庫」分頁沒有品號欄位，只有客戶+品名+庫別，用目前已經匯入的 consignment（寄庫.xlsx 的資料）
-// 依「客戶+品名」反查品號——查不到的就跳過（沒辦法對應到現在的寄庫總數，強行匯入也沒有意義），
-// 用 skipped 計數回報給使用者。庫別欄位是空的那種列是自動產生的小計列，不是真正的資料列，也跳過。
+// 組合檔「寄庫」分頁沒有品號欄位，只有客戶+品名+庫別——寄庫本來就是用「客戶+品名」識別，
+// 不需要品號，所以這裡每一列都會匯入，不會因為查不到品號而跳過。庫別欄位是空的那種列是
+// 自動產生的小計列，不是真正的資料列，才會跳過。
 function parseConsignmentLedgerFromMaster(wb) {
   const sheet = wb.Sheets['寄庫'];
   if (!sheet) throw new Error('這份檔案裡找不到「寄庫」分頁');
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-  if (!rows.length) return { records: [], skipped: 0 };
+  if (!rows.length) return { records: [] };
   const header = rows[0];
   const idxCustomer = findColumnIndex(header, ['客戶']);
   const idxItemName = findColumnIndex(header, ['品名']);
@@ -2014,9 +2016,10 @@ function parseConsignmentLedgerFromMaster(wb) {
   const dateColumns = parseConsignmentDateColumns(header, dateStartIdx, dateEndIdx);
   const firstEntryDate = dateColumns.length ? dateColumns[0].date : todayDateString();
 
-  // 客戶+品名 -> 品號，優先從目前的寄庫總數（ERP匯入的 consignment）反查——
-  // 如果是全新客戶，ERP自己的寄庫.xlsx還沒出現過這個客戶，查不到就退回用品名對庫存/參照裡的品號
-  // （品名本身就是唯一的品項識別，不靠客戶也查得到）
+  // 寄庫是用「客戶+品名」識別，不是品號（見inventory-service.js的consignmentBalanceDocId說明）——
+  // 寄庫品項常常是直接寄庫、從來沒進過一般庫存，這份歷史資料來源本身也只有品名沒有品號，
+  // 之前硬要反查品號、查不到就略過，是2026-10-21發現的bug。品號只是順便查出來給使用者參考用，
+  // 查不到也完全不影響這筆紀錄要不要匯入。
   const codeByCustomerName = new Map();
   currentConsignment.forEach(c => codeByCustomerName.set(`${c.customer}__${c.itemName}`, c.itemCode));
   const codeByItemName = new Map();
@@ -2024,7 +2027,6 @@ function parseConsignmentLedgerFromMaster(wb) {
   currentItemReference.forEach(r => { if (r.itemName && !codeByItemName.has(r.itemName)) codeByItemName.set(r.itemName, r.itemCode); });
 
   const records = [];
-  let skipped = 0;
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const customer = (row[idxCustomer] || '').toString().trim();
@@ -2034,8 +2036,7 @@ function parseConsignmentLedgerFromMaster(wb) {
     const warehouse = normalizeWarehouse(whRaw);
     if (!warehouse) continue; // 庫別不是泰山/台中的略過
 
-    const itemCode = codeByCustomerName.get(`${customer}__${itemName}`) || codeByItemName.get(itemName);
-    if (!itemCode) { skipped++; continue; }
+    const itemCode = codeByCustomerName.get(`${customer}__${itemName}`) || codeByItemName.get(itemName) || '';
 
     const lastMonthQty = idxLastMonth !== -1 ? Number(row[idxLastMonth]) || 0 : 0;
     if (lastMonthQty) {
@@ -2047,7 +2048,7 @@ function parseConsignmentLedgerFromMaster(wb) {
       records.push({ customer, itemCode, itemName, warehouse, date, deltaQty: val, remark: '' });
     });
   }
-  return { records, skipped };
+  return { records };
 }
 
 // 目前有 9 種確認過真實 ERP 匯出格式（進貨退回/鎖庫還沒有真實檔案樣本，
@@ -2070,7 +2071,7 @@ const IMPORT_ITEMS = [
     label: '寄庫進出紀錄（寄庫分頁，會整個覆蓋掉現有的進出紀錄，連手動新增的也會被清掉）',
     matchesFilename: name => name.includes('庫存YU'),
     prepare: wb => parseConsignmentLedgerFromMaster(wb),
-    describe: result => `這份檔案有 ${result.records.length} 筆進出紀錄${result.skipped ? `，另有 ${result.skipped} 筆因為找不到對應的寄庫品號（客戶+品名在目前的寄庫總數裡查不到）被略過` : ''}。注意：確認匯入會把「寄庫進出紀錄」整個清空，只留這份檔案裡的資料，手動新增過的紀錄也會一起被清掉。`,
+    describe: result => `這份檔案有 ${result.records.length} 筆進出紀錄。注意：確認匯入會把「寄庫進出紀錄」整個清空，只留這份檔案裡的資料，手動新增過的紀錄也會一起被清掉。`,
     run: async result => {
       const written = await importConsignmentLedgerEntries(result.records);
       return `已覆蓋寄庫進出紀錄：清掉了 ${written.deleted} 筆舊的，寫入 ${written.written} 筆新的`;

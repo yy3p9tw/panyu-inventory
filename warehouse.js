@@ -175,21 +175,22 @@ expiringSearchInput.addEventListener('input', renderExpiringTable);
 
 // ---------- 寄庫 ----------
 
-// 寄庫餘額(consignmentBalance)是已經算好的加總，每個客戶+品項一筆，不用每次都把完整進出紀錄
+// 寄庫餘額(consignmentBalance)是已經算好的加總，每個客戶+品名一筆，不用每次都把完整進出紀錄
 // 整個讀出來現場加總——見inventory-service.js的applyConsignmentBalanceDelta
-function consignmentBalanceFor(customer, itemCode) {
-  return currentConsignmentBalance.find(b => b.customer === customer && b.itemCode === itemCode) || null;
+// 用「客戶+品名」查，不是品號：寄庫常常是直接寄庫、從來沒進過一般庫存，品名才是可靠的識別。
+function consignmentBalanceFor(customer, itemName) {
+  return currentConsignmentBalance.find(b => b.customer === customer && b.itemName === itemName) || null;
 }
 
-function consignmentLedgerTotal(customer, itemCode, warehouse) {
-  const b = consignmentBalanceFor(customer, itemCode);
+function consignmentLedgerTotal(customer, itemName, warehouse) {
+  const b = consignmentBalanceFor(customer, itemName);
   if (!b) return 0;
   return formatQty(warehouse === '泰山' ? (b.taishanTotal || 0) : warehouse === '台中' ? (b.taichungTotal || 0) : 0);
 }
 
-// 客戶+品號（不分倉庫）的進出紀錄總和，有紀錄就用這個當「寄庫數量」，比ERP原始數字更即時
-function consignmentLedgerGrandTotal(customer, itemCode) {
-  const b = consignmentBalanceFor(customer, itemCode);
+// 客戶+品名（不分倉庫）的進出紀錄總和，有紀錄就用這個當「寄庫數量」，比ERP原始數字更即時
+function consignmentLedgerGrandTotal(customer, itemName) {
+  const b = consignmentBalanceFor(customer, itemName);
   return b ? (b.total || 0) : null;
 }
 
@@ -203,17 +204,17 @@ function renderConsignmentTable() {
   });
 
   const displayQtyFor = r => {
-    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemCode);
+    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemName);
     if (ledgerTotal !== null) return formatQty(ledgerTotal);
     return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
   };
 
   // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
-  // 這種也要能顯示，把兩邊的客戶+品號做聯集（跟餘額表做聯集，不是跟完整進出紀錄，餘額表已經是
-  // 去重過、一個客戶+品項一筆的資料）
-  const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemCode}__${r.customer}`));
+  // 這種也要能顯示，把兩邊的客戶+品名做聯集（跟餘額表做聯集，不是跟完整進出紀錄，餘額表已經是
+  // 去重過、一個客戶+品項一筆的資料；用品名配對，不是品號）
+  const consignmentKeys = new Set(currentConsignment.map(r => `${r.itemName}__${r.customer}`));
   const ledgerOnlyRows = currentConsignmentBalance
-    .filter(b => !consignmentKeys.has(`${b.itemCode}__${b.customer}`))
+    .filter(b => !consignmentKeys.has(`${b.itemName}__${b.customer}`))
     .map(b => ({ itemCode: b.itemCode, itemName: b.itemName, customer: b.customer, qty: 0 }));
   const allRows = [...currentConsignment, ...ledgerOnlyRows];
 
@@ -228,7 +229,7 @@ function renderConsignmentTable() {
   items = [...items].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
   const taichungSumText = items.length
-    ? `，台中加總 ${formatQty(items.reduce((sum, r) => sum + consignmentLedgerTotal(r.customer, r.itemCode, '台中'), 0))}`
+    ? `，台中加總 ${formatQty(items.reduce((sum, r) => sum + consignmentLedgerTotal(r.customer, r.itemName, '台中'), 0))}`
     : '';
   consignmentCount.textContent = totalCount
     ? (keyword ? `共 ${totalCount} 筆，篩選後 ${items.length} 筆${taichungSumText}` : `共 ${totalCount} 筆${taichungSumText}`)
@@ -253,8 +254,8 @@ function renderConsignmentTable() {
       <td>${escapeHTML(r.customer)}${isLocked ? ' <span class="badge badge-consign-locked" title="這個客戶的這個品項同時也被鎖庫了">鎖庫</span>' : ''}</td>
       <td>${escapeHTML(r.itemName)}</td>
       <td class="qty-cell">${displayQty}</td>
-      <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemCode, '泰山')}</td>
-      <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemCode, '台中')}</td>
+      <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemName, '泰山')}</td>
+      <td class="qty-cell">${consignmentLedgerTotal(r.customer, r.itemName, '台中')}</td>
     </tr>
   `;
   }).join('');

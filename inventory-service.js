@@ -257,21 +257,26 @@ export async function replaceConsignment(records) {
 // 目前數量是全部加總、寄庫日期是最近一筆的日期——這裡改成資料庫版本：每筆進出各自一筆帶日期的紀錄，
 // 不是一欄一天，畫面上即時加總算出目前數量跟最近日期。同一個客戶+品項+倉庫可以有很多筆，逐筆新增/刪除。
 
-// ---------- 寄庫餘額（consignmentBalance）：每個客戶+品項一筆，記錄目前加總數量 ----------
+// ---------- 寄庫餘額（consignmentBalance）：每個客戶+品名一筆，記錄目前加總數量 ----------
 // 寄庫數量本來是每次顯示都把這個客戶+品項「從有紀錄以來的所有進出紀錄」整個讀出來加總算出來的，
 // consignmentLedger只會越存越多、從不清空，久了這個加總動作變得很花讀取量。改成另外存一份
 // 已經算好的餘額，平常顯示只讀這份小很多的餘額表；新增/刪除一筆進出紀錄時用Firestore的increment()
 // 把變動量加/減到餘額上，不用重新整個重算。只有使用者點進某個客戶品項看明細時，才會另外查
 // 那一筆的完整進出紀錄（見app.js的loadConsignLedgerDetail，只查那一筆，不是整個collection）。
-function consignmentBalanceDocId(customer, itemCode) {
-  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}`;
+//
+// 用「客戶+品名」當識別key，不是「客戶+品號」：寄庫品項常常是直接寄庫、從來沒進過一般庫存，
+// 歷史匯入(組合檔的寄庫分頁)本身也只有品名沒有品號，硬要反查品號會查不到被略過（2026-10-21
+// 發現的問題）。品名在所有來源裡都查得到、本身就是唯一的品項識別，品號只是順便存起來給使用者
+// 參考用，不是匹配用的欄位。
+function consignmentBalanceDocId(customer, itemName) {
+  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemName)}`;
 }
 
-async function applyConsignmentBalanceDelta(customer, itemCode, itemName, warehouse, deltaQty) {
+async function applyConsignmentBalanceDelta(customer, itemName, itemCode, warehouse, deltaQty) {
   if (!deltaQty) return;
-  const ref = doc(db, 'consignmentBalance', consignmentBalanceDocId(customer, itemCode));
+  const ref = doc(db, 'consignmentBalance', consignmentBalanceDocId(customer, itemName));
   const updates = {
-    customer, itemCode, itemName: itemName || '',
+    customer, itemName, itemCode: itemCode || '',
     total: increment(deltaQty),
     updatedAt: Date.now()
   };
@@ -288,16 +293,16 @@ export async function rebuildConsignmentBalance() {
   const balances = new Map();
   ledgerSnap.docs.forEach(d => {
     const data = d.data();
-    const key = consignmentBalanceDocId(data.customer, data.itemCode);
+    const key = consignmentBalanceDocId(data.customer, data.itemName);
     if (!balances.has(key)) {
-      balances.set(key, { customer: data.customer, itemCode: data.itemCode, itemName: data.itemName || '', total: 0, taishanTotal: 0, taichungTotal: 0 });
+      balances.set(key, { customer: data.customer, itemName: data.itemName || '', itemCode: data.itemCode || '', total: 0, taishanTotal: 0, taichungTotal: 0 });
     }
     const b = balances.get(key);
     const qty = Number(data.deltaQty) || 0;
     b.total += qty;
     if (data.warehouse === '泰山') b.taishanTotal += qty;
     else if (data.warehouse === '台中') b.taichungTotal += qty;
-    if (data.itemName && !b.itemName) b.itemName = data.itemName;
+    if (data.itemCode && !b.itemCode) b.itemCode = data.itemCode;
   });
 
   const oldBalanceSnap = await getDocs(collection(db, 'consignmentBalance'));
@@ -324,10 +329,10 @@ export async function rebuildConsignmentBalance() {
   return { balances: balances.size, ledgerEntries: ledgerSnap.docs.length };
 }
 
-// entry: { customer, itemCode, itemName, warehouse, date('YYYY-MM-DD'), deltaQty(正=寄入/負=出庫), remark }
+// entry: { customer, itemCode(僅供參考，可能是空的), itemName, warehouse, date('YYYY-MM-DD'), deltaQty(正=寄入/負=出庫), remark }
 export async function addConsignmentLedgerEntry(entry) {
   await addDoc(collection(db, 'consignmentLedger'), { ...entry, updatedAt: Date.now() });
-  await applyConsignmentBalanceDelta(entry.customer, entry.itemCode, entry.itemName, entry.warehouse, entry.deltaQty);
+  await applyConsignmentBalanceDelta(entry.customer, entry.itemName, entry.itemCode, entry.warehouse, entry.deltaQty);
 }
 
 export async function deleteConsignmentLedgerEntry(id) {
@@ -336,28 +341,29 @@ export async function deleteConsignmentLedgerEntry(id) {
   await deleteDoc(ref);
   if (snap.exists()) {
     const data = snap.data();
-    await applyConsignmentBalanceDelta(data.customer, data.itemCode, data.itemName, data.warehouse, -(Number(data.deltaQty) || 0));
+    await applyConsignmentBalanceDelta(data.customer, data.itemName, data.itemCode, data.warehouse, -(Number(data.deltaQty) || 0));
   }
 }
 
 // 查某個客戶+品項+倉庫的完整進出紀錄明細——只在使用者點開明細面板時才呼叫，只查這一筆，
 // 不是整個consignmentLedger collection
-export async function fetchConsignmentLedgerEntries(customer, itemCode, warehouse) {
+export async function fetchConsignmentLedgerEntries(customer, itemName, warehouse) {
   const snap = await getDocs(query(
     collection(db, 'consignmentLedger'),
     where('customer', '==', customer),
-    where('itemCode', '==', itemCode),
+    where('itemName', '==', itemName),
     where('warehouse', '==', warehouse)
   ));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 // 從組合檔「寄庫」分頁批次匯入歷史進出紀錄（該分頁一欄一天，這裡已經在 app.js 解析成一筆一筆帶日期的紀錄）。
-// 用「客戶+品號+倉庫+日期」當文件ID（不是隨機ID）：同一天在原始表格裡本來就只有一個數字，
-// 用日期當ID可以讓同一份檔案重複匯入時是覆蓋、不是產生重複資料。跟畫面上手動新增的單筆紀錄
-// （用隨機ID，允許同一天有好幾筆）是不同的ID規則，兩種紀錄會共存在同一個 collection 裡。
-function consignmentLedgerImportDocId(customer, itemCode, warehouse, date) {
-  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemCode)}__${warehouse}__${date}`;
+// 用「客戶+品名+倉庫+日期」當文件ID（不是隨機ID，也不是品號——這份歷史資料來源本身就沒有品號，
+// 見上面consignmentBalance的說明）：同一天在原始表格裡本來就只有一個數字，用日期當ID可以讓
+// 同一份檔案重複匯入時是覆蓋、不是產生重複資料。跟畫面上手動新增的單筆紀錄（用隨機ID，允許
+// 同一天有好幾筆）是不同的ID規則，兩種紀錄會共存在同一個 collection 裡。
+function consignmentLedgerImportDocId(customer, itemName, warehouse, date) {
+  return `${sanitizeIdPart(customer)}__${sanitizeIdPart(itemName)}__${warehouse}__${date}`;
 }
 
 // 整個 consignmentLedger collection 清空再寫入（不是只覆蓋這次檔案裡有的客戶+品項）——
@@ -366,7 +372,7 @@ function consignmentLedgerImportDocId(customer, itemCode, warehouse, date) {
 // 也會被這個動作一起清掉，呼叫端要在按下確認前講清楚這個風險。
 export async function importConsignmentLedgerEntries(records) {
   const docs = records.map(r => ({
-    id: consignmentLedgerImportDocId(r.customer, r.itemCode, r.warehouse, r.date),
+    id: consignmentLedgerImportDocId(r.customer, r.itemName, r.warehouse, r.date),
     data: { ...r, updatedAt: Date.now() }
   }));
   const result = await replaceWholeCollection('consignmentLedger', docs);
