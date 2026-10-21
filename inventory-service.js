@@ -32,8 +32,14 @@ function stockDocId(itemCode, warehouse) {
 // 那次是同一個機制，不是只有前台有這個問題）。改成讀一次就好，見下面的 fetchCollectionOnce，
 // 搭配 app.js 的 loadScopedData()：登入時、角色改變時、自己寫入資料後、或偵測到 meta/lastUpdate
 // 變了（可能是別的分頁/裝置寫入的）才重讀一次，不再保持長連線。
+// 寄庫(consignment)的ERP原始數量是0的品項，畫面上本來就會被過濾掉不顯示（見app.js的
+// renderConsignmentTable聯集邏輯——這種品項如果進出紀錄裡有紀錄，會從consignmentLedger補一筆
+// 回來；完全沒紀錄的話，本來就是「這個客戶這個品項目前沒有寄庫中的貨」，不顯示是對的），
+// 所以乾脆用where查詢直接不讀，不用整份拉下來自己再篩掉。
 export async function fetchCollectionOnce(name) {
-  const snapshot = await getDocs(collection(db, name));
+  const col = collection(db, name);
+  const q = name === 'consignment' ? query(col, where('qty', '!=', 0)) : col;
+  const snapshot = await getDocs(q);
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 

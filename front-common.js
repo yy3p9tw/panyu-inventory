@@ -1,6 +1,6 @@
 // 前台展示頁共用的小工具：純讀取、不需要登入。
 import { db } from './firebase-config.js?v=34';
-import { collection, doc, getDoc, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 export function escapeHTML(str) {
   const div = document.createElement('div');
@@ -76,9 +76,15 @@ export function buildBatchesByCode(batchList, warehouse) {
 // 前台頁面不用即時監聽(onSnapshot)——資料本來就是每天匯入一次，即時監聽的長連線在手機上
 // 螢幕關掉又開、切換網路都會偷偷重新連線、重讀整個collection，造成讀取量暴增。
 // 改成讀一次就好，想看最新資料按頁面上的「重新整理」按鈕重新呼叫。
+// 寄庫(consignment)的ERP原始數量是0的品項，畫面上本來就會被過濾掉不顯示（見renderConsignmentTable
+// 的聯集邏輯——這種品項如果進出紀錄裡有紀錄，會從consignmentLedger補一筆回來；完全沒紀錄的話,
+// 本來就是「這個客戶這個品項目前沒有寄庫中的貨」，不顯示是對的），所以乾脆用where查詢直接不讀，
+// 不用整份拉下來自己再篩掉。
 export async function fetchCollectionOnce(name) {
   try {
-    const snapshot = await getDocs(collection(db, name));
+    const col = collection(db, name);
+    const q = name === 'consignment' ? query(col, where('qty', '!=', 0)) : col;
+    const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (err) {
     console.error(`讀取 ${name} 失敗`, err);

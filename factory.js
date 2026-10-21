@@ -1,6 +1,6 @@
 // 廠務前台：純唯讀展示頁，不用登入。跟後台管理系統（index.html）共用同一批 Firestore collection，
 // 只是這裡完全不能編輯。資料每天匯入一次，開頁面讀一次就好，不用即時監聽（見 loadAllData）。
-import { escapeHTML, renderBatchCell, buildBatchesByCode, fetchCollectionOnce, subscribeLastUpdate, wireHistoryQuery, formatQty, parseBatchExpiryDate } from './front-common.js?v=40';
+import { escapeHTML, renderBatchCell, buildBatchesByCode, fetchCollectionOnce, subscribeLastUpdate, wireHistoryQuery, formatQty, parseBatchExpiryDate } from './front-common.js?v=41';
 
 const factoryMaterialSearchInput = document.getElementById('factoryMaterialSearchInput');
 const factoryMaterialTableBody = document.getElementById('factoryMaterialTableBody');

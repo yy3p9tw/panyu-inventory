@@ -20,7 +20,7 @@ import {
   clearDailyErpData,
   createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
   touchLastUpdate, subscribeToLastUpdate
-} from './inventory-service.js?v=44';
+} from './inventory-service.js?v=45';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
@@ -1255,10 +1255,23 @@ function buildStocktakeItems(warehouse) {
     .filter(it => it.systemQty !== 0);
 
   const consignmentItems = [];
+  const seenConsignmentKeys = new Set();
   currentConsignment.forEach(r => {
+    seenConsignmentKeys.add(`${r.itemCode}__${r.customer}`);
     const summary = consignmentLedgerSummary(r.customer, r.itemCode, warehouse);
     const qty = summary ? formatQty(summary.total) : 0;
     if (qty !== 0) consignmentItems.push({ itemCode: r.itemCode, itemName: r.itemName, customer: r.customer, systemQty: qty });
+  });
+  // 寄庫(consignment)現在只讀ERP數量不是0的部分（見inventory-service.js的fetchCollectionOnce），
+  // ERP數量剛好是0、但進出紀錄裡有紀錄的客戶+品項不會出現在currentConsignment裡，
+  // 這裡要跟寄庫分頁一樣從進出紀錄把這種品項補回來，不然盤點表會漏掉
+  currentConsignmentLedger.forEach(l => {
+    const key = `${l.itemCode}__${l.customer}`;
+    if (seenConsignmentKeys.has(key)) return;
+    seenConsignmentKeys.add(key);
+    const summary = consignmentLedgerSummary(l.customer, l.itemCode, warehouse);
+    const qty = summary ? formatQty(summary.total) : 0;
+    if (qty !== 0) consignmentItems.push({ itemCode: l.itemCode, itemName: l.itemName, customer: l.customer, systemQty: qty });
   });
 
   return [...stockItems, ...consignmentItems].sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));

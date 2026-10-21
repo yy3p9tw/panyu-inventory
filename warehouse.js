@@ -2,7 +2,7 @@
 // 只是這裡完全不能編輯。資料每天匯入一次，開頁面讀一次就好，不用即時監聽（見 loadAllData）。
 import {
   escapeHTML, renderBatchCell, renderQtyCell, buildLockByCode, buildBatchesByCode, fetchCollectionOnce, subscribeLastUpdate, wireHistoryQuery, formatQty, parseBatchExpiryDate
-} from './front-common.js?v=40';
+} from './front-common.js?v=41';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const taishanSearchInput = document.getElementById('taishanSearchInput');
