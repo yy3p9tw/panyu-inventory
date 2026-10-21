@@ -20,7 +20,7 @@ import {
   clearDailyErpData,
   createStocktakeSession, updateStocktakeItem, deleteStocktakeSession,
   touchLastUpdate, subscribeToLastUpdate
-} from './inventory-service.js?v=43';
+} from './inventory-service.js?v=44';
 import { touchOwnProfile, subscribeToOwnProfile, subscribeToUsers, updateUserRoles } from './users-service.js?v=33';
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 

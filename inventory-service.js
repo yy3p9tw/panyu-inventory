@@ -45,9 +45,10 @@ export async function fetchCollectionOnce(name) {
 // 之後如果拿到鎖庫/參照這些資料來源再回頭補上。
 // 同一個倉庫舊資料會被完全取代（品項下架/歸零時，舊的庫存文件也要跟著消失，不能只靠覆蓋殘留）。
 export async function replaceStockForWarehouses(records, warehouses) {
-  // 1. 先刪掉這些倉庫目前在 Firestore 裡的所有舊資料
-  const existingSnap = await getDocs(stockCol);
-  const toDelete = existingSnap.docs.filter(d => warehouses.includes(d.data().warehouse));
+  // 1. 先刪掉這些倉庫目前在 Firestore 裡的所有舊資料——用where查詢只拿這幾個倉庫的文件，
+  // 不要把整個stock collection(含廠務的資料)都讀出來，省掉不相干倉庫那份讀取量
+  const existingSnap = await getDocs(query(stockCol, where('warehouse', 'in', warehouses)));
+  const toDelete = existingSnap.docs;
 
   const chunks = [];
   const all = [...toDelete];
@@ -95,15 +96,19 @@ export async function updateStockNote(itemCode, warehouse, note) {
   await setDoc(ref, { note }, { merge: true });
 }
 
-// ---------- 共用：整批覆蓋一個 collection（可用 filterFn 只覆蓋其中一部分） ----------
+// ---------- 共用：整批覆蓋一個 collection（可用 whereField+whereValues 只覆蓋其中一部分） ----------
 
-// filterFn 不給的話就是整個 collection 全部覆蓋；有給的話只刪掉 filterFn(doc)===true 的部分
-// （例如未核完調整分好幾個來源檔案各自匯入，不能匯入銷貨就把異動的資料也洗掉）
-async function replaceWholeCollection(collectionName, docs, filterFn) {
+// whereField/whereValues 不給的話就是整個 collection 全部覆蓋；有給的話只刪掉 whereField 的值
+// 在 whereValues 裡的那部分（例如未核完調整分好幾個來源檔案各自匯入，不能匯入銷貨就把異動的
+// 資料也洗掉）。用 Firestore 的 where查詢直接篩，不要整個collection全部讀出來自己篩——
+// 不然像未核完調整這種6種來源分開匯入的，每匯一種就把整個collection重讀一次，很浪費。
+async function replaceWholeCollection(collectionName, docs, whereField, whereValues) {
   const col = collection(db, collectionName);
-  const existingSnap = await getDocs(col);
+  const existingSnap = whereField
+    ? await getDocs(query(col, where(whereField, 'in', whereValues)))
+    : await getDocs(col);
 
-  const toDeleteSource = filterFn ? existingSnap.docs.filter(d => filterFn(d.data())) : [...existingSnap.docs];
+  const toDeleteSource = existingSnap.docs;
   const deletedCount = toDeleteSource.length;
   const deleteChunks = [];
   const toDelete = [...toDeleteSource];
@@ -294,7 +299,7 @@ export async function replacePendingAdjustments(records, sources) {
       updatedAt: Date.now()
     }
   }));
-  return replaceWholeCollection('pendingAdjustments', docs, data => sources.includes(data.source));
+  return replaceWholeCollection('pendingAdjustments', docs, 'source', sources);
 }
 
 // ---------- 彙總（會計角色用）：每次匯入完全覆蓋 ----------
