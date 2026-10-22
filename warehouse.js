@@ -197,17 +197,9 @@ function consignmentLedgerGrandTotal(customer, itemName) {
 function renderConsignmentTable() {
   const keyword = consignmentSearchInput.value.trim().toLowerCase();
 
-  const adjustmentByKey = new Map();
-  currentPendingAdjustments.forEach(a => {
-    const key = `${a.itemCode}__${a.warehouse}`;
-    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
-  });
-
-  const displayQtyFor = r => {
-    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemName);
-    if (ledgerTotal !== null) return formatQty(ledgerTotal);
-    return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
-  };
+  // 寄庫數量完全只看進出紀錄的加總，不信任ERP寄庫.xlsx的原始數字——沒有人手動記錄過進出紀錄的
+  // 客戶+品項，就當作目前沒有寄庫中的貨（顯示0），不會因為ERP還留著舊數字就誤導使用者
+  const displayQtyFor = r => formatQty(consignmentLedgerGrandTotal(r.customer, r.itemName) || 0);
 
   // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
   // 這種也要能顯示，把兩邊的客戶+品名做聯集（跟餘額表做聯集，不是跟完整進出紀錄，餘額表已經是
@@ -397,7 +389,7 @@ const TAB_DEPENDENCIES = {
   taishan: ['stock', 'batchList', 'lockedStock', 'pendingAdjustments', 'itemReference'],
   taichung: ['stock', 'batchList', 'lockedStock', 'pendingAdjustments', 'itemReference'],
   expiring: ['batchList'],
-  consignment: ['consignment', 'consignmentBalance', 'pendingAdjustments', 'lockedStock'],
+  consignment: ['consignment', 'consignmentBalance', 'lockedStock'],
   lockedStock: ['lockedStock'],
   stocktake: ['stocktakeSessions', 'stocktakeItems'],
   history: [] // 歷史是按「查詢」當下才讀 dailySnapshots 的單一文件，跟這套機制無關

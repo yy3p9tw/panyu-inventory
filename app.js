@@ -335,7 +335,7 @@ const TAB_DEPENDENCIES = {
   summary: ['summary'],
   batch: ['batchList'],
   expiring: ['batchList'],
-  consignment: ['consignment', 'consignmentBalance', 'pendingAdjustments', 'lockedStock'],
+  consignment: ['consignment', 'consignmentBalance', 'lockedStock'],
   lockedStock: ['lockedStock'],
   stocktake: ['stock', 'pendingAdjustments', 'consignment', 'consignmentBalance', 'stocktakeSessions', 'stocktakeItems'],
   import: [],
@@ -958,20 +958,10 @@ function consignmentLedgerGrandTotal(customer, itemName) {
 function renderConsignmentTable() {
   const keyword = consignmentSearchInput.value.trim().toLowerCase();
 
-  // 品號+客戶 -> 未核完調整加總（來自異動分頁，庫別欄位對不到泰山/台中時代表在動客戶的寄庫帳）
-  const adjustmentByKey = new Map();
-  currentPendingAdjustments.forEach(a => {
-    const key = `${a.itemCode}__${a.warehouse}`;
-    adjustmentByKey.set(key, (adjustmentByKey.get(key) || 0) + (a.deltaQty || 0));
-  });
-
-  // 寄庫數量：有進出紀錄就用進出紀錄的總和（比較即時，使用者手動記的才是實際狀況），
-  // 完全沒有紀錄的品項才退回用 ERP 寄庫.xlsx 原始數字+未核完調整
-  const displayQtyFor = r => {
-    const ledgerTotal = consignmentLedgerGrandTotal(r.customer, r.itemName);
-    if (ledgerTotal !== null) return formatQty(ledgerTotal);
-    return formatQty(r.qty + (adjustmentByKey.get(`${r.itemCode}__${r.customer}`) || 0));
-  };
+  // 寄庫數量完全只看進出紀錄的加總，不信任ERP寄庫.xlsx的原始數字——沒有人手動記錄過進出紀錄的
+  // 客戶+品項，就當作目前沒有寄庫中的貨（顯示0），不會因為ERP還留著舊數字就誤導使用者
+  // （2026-10-22確認：泰山/台中都是0代表完全沒記錄過，總數也該是0，不該另外退回用ERP數字）
+  const displayQtyFor = r => formatQty(consignmentLedgerGrandTotal(r.customer, r.itemName) || 0);
 
   // 有些客戶+品項只存在進出紀錄裡，ERP的寄庫.xlsx自己還沒出現過這筆（例如全新客戶）——
   // 這種也要能顯示，不能只靠 currentConsignment 有沒有這筆資料，所以把兩邊的客戶+品名做聯集
